@@ -20,3 +20,17 @@ Windows desktop controller and Arduino firmware for a music-reactive 5x7 light w
 ## Current status
 
 Initial repository and Visual Studio scaffolding created.
+
+## Naming conventions
+
+Repo names: kebab-case
+Example: real-time-light-wall
+
+Solution names: PascalCase
+Example: LightWallController
+
+Project names: LightWall.[Purpose]
+Example: LightWall.App, LightWall.Core, LightWall.IO
+
+Folders inside projects: PascalCase or clear nouns
+Example: Models, Patterns, Audio, Serial
