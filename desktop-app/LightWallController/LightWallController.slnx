@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="LightWall.App/LightWall.App.csproj" />
+  <Project Path="LightWall.Core/LightWall.Core.csproj" />
+  <Project Path="LightWall.IO/LightWall.IO.csproj" />
+  <Project Path="LightWall.Tests/LightWall.Tests.csproj" />
+</Solution>
