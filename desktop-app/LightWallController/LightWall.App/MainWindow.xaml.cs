@@ -1,4 +1,5 @@
 ﻿using LightWall.Core.Models;
+using LightWall.Core.Patterns;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -106,6 +107,44 @@ namespace LightWall.App
         private void RandomizeButton_Click(object sender, RoutedEventArgs e)
         {
             _wallFrame.Randomize(_random);
+            RenderWall();
+        }
+
+        private void RowThreeButton_Click(object sender, RoutedEventArgs e)
+        {
+            _wallFrame.Clear();
+            _wallFrame.SetRow(2, true);
+            RenderWall();
+        }
+
+        private void ColumnFourButton_Click(object sender, RoutedEventArgs e)
+        {
+            _wallFrame.Clear();
+            _wallFrame.SetColumn(3, true);
+            RenderWall();
+        }
+
+        private void CheckerboardButton_Click(object sender, RoutedEventArgs e)
+        {
+            WallPatterns.ApplyCheckerboard(_wallFrame);
+            RenderWall();
+        }
+
+        private void BorderButton_Click(object sender, RoutedEventArgs e)
+        {
+            WallPatterns.ApplyBorder(_wallFrame);
+            RenderWall();
+        }
+
+        private void CrossButton_Click(object sender, RoutedEventArgs e)
+        {
+            WallPatterns.ApplyCross(_wallFrame);
+            RenderWall();
+        }
+
+        private void SparkleButton_Click(object sender, RoutedEventArgs e)
+        {
+            WallPatterns.ApplyRandomSparkle(_wallFrame, _random, 8);
             RenderWall();
         }
 

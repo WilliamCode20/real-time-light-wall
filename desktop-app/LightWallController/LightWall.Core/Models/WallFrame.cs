@@ -29,26 +29,51 @@ namespace LightWall.Core.Models
             _cells[row, column] = !_cells[row, column];
         }
 
-        public void Clear()
+        public void SetAll(bool value)
         {
             for (int row = 0; row < Rows; row++)
             {
                 for (int column = 0; column < Columns; column++)
                 {
-                    _cells[row, column] = false;
+                    _cells[row, column] = value;
                 }
             }
         }
 
-        public void Fill()
+        public void SetRow(int row, bool value)
         {
+            if (row < 0 || row >= Rows)
+            {
+                throw new ArgumentOutOfRangeException(nameof(row));
+            }
+
+            for (int column = 0; column < Columns; column++)
+            {
+                _cells[row, column] = value;
+            }
+        }
+
+        public void SetColumn(int column, bool value)
+        {
+            if (column < 0 || column >= Columns)
+            {
+                throw new ArgumentOutOfRangeException(nameof(column));
+            }
+
             for (int row = 0; row < Rows; row++)
             {
-                for (int column = 0; column < Columns; column++)
-                {
-                    _cells[row, column] = true;
-                }
+                _cells[row, column] = value;
             }
+        }
+
+        public void Clear()
+        {
+            SetAll(false);
+        }
+
+        public void Fill()
+        {
+            SetAll(true);
         }
 
         public void Randomize(Random random)

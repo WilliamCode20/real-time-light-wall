@@ -5,10 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Light Wall Simulator"
-        Height="600"
-        Width="900"
-        MinHeight="500"
-        MinWidth="700"
+        Height="650"
+        Width="950"
+        MinHeight="550"
+        MinWidth="750"
         Background="#1E1E1E">
 
     <Grid Margin="24">
@@ -29,29 +29,61 @@
                        Margin="0,6,0,0"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="1"
-                    Orientation="Horizontal"
-                    Margin="0,0,0,20">
-            <Button x:Name="ClearButton"
-                    Content="Clear"
-                    Width="100"
+        <WrapPanel Grid.Row="1" Margin="0,0,0,20">
+            <Button Content="Clear"
+                    Width="110"
                     Height="36"
-                    Margin="0,0,12,0"
+                    Margin="0,0,12,12"
                     Click="ClearButton_Click"/>
 
-            <Button x:Name="FillButton"
-                    Content="Fill"
-                    Width="100"
+            <Button Content="Fill"
+                    Width="110"
                     Height="36"
-                    Margin="0,0,12,0"
+                    Margin="0,0,12,12"
                     Click="FillButton_Click"/>
 
-            <Button x:Name="RandomizeButton"
-                    Content="Randomize"
-                    Width="100"
+            <Button Content="Randomize"
+                    Width="110"
                     Height="36"
+                    Margin="0,0,12,12"
                     Click="RandomizeButton_Click"/>
-        </StackPanel>
+
+            <Button Content="Row 3"
+                    Width="110"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="RowThreeButton_Click"/>
+
+            <Button Content="Column 4"
+                    Width="110"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="ColumnFourButton_Click"/>
+
+            <Button Content="Checkerboard"
+                    Width="110"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="CheckerboardButton_Click"/>
+
+            <Button Content="Border"
+                    Width="110"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="BorderButton_Click"/>
+
+            <Button Content="Cross"
+                    Width="110"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="CrossButton_Click"/>
+
+            <Button Content="Sparkle"
+                    Width="110"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="SparkleButton_Click"/>
+        </WrapPanel>
 
         <Border Grid.Row="2"
                 Background="#2B2B2B"
