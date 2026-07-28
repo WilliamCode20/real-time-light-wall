@@ -66,6 +66,22 @@ namespace LightWall.Core.Models
             }
         }
 
+        public void CopyFrom(WallFrame other)
+        {
+            if (other is null)
+            {
+                throw new ArgumentNullException(nameof(other));
+            }
+
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int column = 0; column < Columns; column++)
+                {
+                    _cells[row, column] = other.GetCell(row, column);
+                }
+            }
+        }
+
         public void Clear()
         {
             SetAll(false);

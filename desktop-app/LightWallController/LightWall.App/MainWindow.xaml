@@ -5,14 +5,15 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Light Wall Simulator"
-        Height="650"
-        Width="950"
-        MinHeight="550"
-        MinWidth="750"
+        Height="720"
+        Width="1000"
+        MinHeight="600"
+        MinWidth="800"
         Background="#1E1E1E">
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -23,13 +24,13 @@
                        FontSize="28"
                        FontWeight="Bold"
                        Foreground="White"/>
-            <TextBlock Text="Click cells to toggle bulbs on and off."
+            <TextBlock Text="Click cells to toggle bulbs on and off, or run pattern animations."
                        FontSize="14"
                        Foreground="#CCCCCC"
                        Margin="0,6,0,0"/>
         </StackPanel>
 
-        <WrapPanel Grid.Row="1" Margin="0,0,0,20">
+        <WrapPanel Grid.Row="1" Margin="0,0,0,12">
             <Button Content="Clear"
                     Width="110"
                     Height="36"
@@ -85,7 +86,34 @@
                     Click="SparkleButton_Click"/>
         </WrapPanel>
 
-        <Border Grid.Row="2"
+        <WrapPanel Grid.Row="2" Margin="0,0,0,20">
+            <Button Content="Start Row Sweep"
+                    Width="140"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="StartRowSweepButton_Click"/>
+
+            <Button Content="Start Border Pulse"
+                    Width="140"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="StartBorderPulseButton_Click"/>
+
+            <Button Content="Stop Animation"
+                    Width="140"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="StopAnimationButton_Click"/>
+
+            <TextBlock x:Name="AnimationStatusTextBlock"
+                       Text="Animation: stopped"
+                       VerticalAlignment="Center"
+                       FontSize="14"
+                       Foreground="#DDDDDD"
+                       Margin="12,8,0,0"/>
+        </WrapPanel>
+
+        <Border Grid.Row="3"
                 Background="#2B2B2B"
                 CornerRadius="16"
                 Padding="24">
