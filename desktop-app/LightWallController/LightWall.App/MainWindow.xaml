@@ -3,10 +3,63 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:LightWall.App"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="Light Wall Simulator"
+        Height="600"
+        Width="900"
+        MinHeight="500"
+        MinWidth="700"
+        Background="#1E1E1E">
 
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Light Wall Simulator"
+                       FontSize="28"
+                       FontWeight="Bold"
+                       Foreground="White"/>
+            <TextBlock Text="Click cells to toggle bulbs on and off."
+                       FontSize="14"
+                       Foreground="#CCCCCC"
+                       Margin="0,6,0,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,20">
+            <Button x:Name="ClearButton"
+                    Content="Clear"
+                    Width="100"
+                    Height="36"
+                    Margin="0,0,12,0"
+                    Click="ClearButton_Click"/>
+
+            <Button x:Name="FillButton"
+                    Content="Fill"
+                    Width="100"
+                    Height="36"
+                    Margin="0,0,12,0"
+                    Click="FillButton_Click"/>
+
+            <Button x:Name="RandomizeButton"
+                    Content="Randomize"
+                    Width="100"
+                    Height="36"
+                    Click="RandomizeButton_Click"/>
+        </StackPanel>
+
+        <Border Grid.Row="2"
+                Background="#2B2B2B"
+                CornerRadius="16"
+                Padding="24">
+            <UniformGrid x:Name="WallGrid"
+                         Rows="5"
+                         Columns="7"/>
+        </Border>
     </Grid>
 </Window>
