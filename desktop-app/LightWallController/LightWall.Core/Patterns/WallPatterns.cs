@@ -5,8 +5,33 @@ using LightWall.Core.Models;
 
 namespace LightWall.Core.Patterns
 {
+    /// <summary>
+    /// Contains reusable static pattern-building methods.
+    ///
+    /// These methods do not create animation timing.
+    /// They simply fill a WallFrame with a particular static arrangement.
+    ///
+    /// This class exists to keep pattern logic OUT of the UI code.
+    /// That is an important design decision.
+    ///
+    /// MainWindow should mostly be responsible for:
+    /// - responding to button clicks
+    /// - starting/stopping animations
+    /// - rendering the simulator
+    ///
+    /// Pattern generation belongs here instead.
+    /// </summary>
     public static class WallPatterns
     {
+        /// <summary>
+        /// Applies a checkerboard pattern to the given frame.
+        ///
+        /// The rule is:
+        /// - if row + column is even, turn the cell ON
+        /// - otherwise leave it OFF
+        ///
+        /// This creates an alternating grid pattern.
+        /// </summary>
         public static void ApplyCheckerboard(WallFrame frame)
         {
             frame.Clear();
@@ -21,6 +46,17 @@ namespace LightWall.Core.Patterns
             }
         }
 
+        /// <summary>
+        /// Applies a border pattern.
+        ///
+        /// A border cell is any cell that sits on the outside edge:
+        /// - top row
+        /// - bottom row
+        /// - left column
+        /// - right column
+        ///
+        /// Everything inside the border stays OFF.
+        /// </summary>
         public static void ApplyBorder(WallFrame frame)
         {
             frame.Clear();
@@ -40,6 +76,17 @@ namespace LightWall.Core.Patterns
             }
         }
 
+        /// <summary>
+        /// Applies a cross / plus-sign pattern.
+        ///
+        /// This turns on:
+        /// - the center row
+        /// - the center column
+        ///
+        /// On a 5x7 grid, that means:
+        /// - center row    = 2
+        /// - center column = 3
+        /// </summary>
         public static void ApplyCross(WallFrame frame)
         {
             frame.Clear();
@@ -51,6 +98,16 @@ namespace LightWall.Core.Patterns
             frame.SetColumn(centerColumn, true);
         }
 
+        /// <summary>
+        /// Applies a simple random sparkle pattern by turning on a given
+        /// number of random cells.
+        ///
+        /// Note:
+        /// Some random picks may land on the same cell more than once,
+        /// so the final number of lit cells may be slightly less than 'count'.
+        ///
+        /// That is okay for this early prototype.
+        /// </summary>
         public static void ApplyRandomSparkle(WallFrame frame, Random random, int count)
         {
             frame.Clear();
