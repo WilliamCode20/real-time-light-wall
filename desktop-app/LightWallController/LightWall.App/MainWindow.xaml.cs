@@ -1,6 +1,7 @@
 ﻿using LightWall.Core.Models;
 using LightWall.Core.Patterns;
 using LightWall.Core.Animations;
+using LightWall.Core.Serialization;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -218,6 +219,10 @@ namespace LightWall.App
                     ? new SolidColorBrush(Color.FromRgb(255, 220, 120))
                     : new SolidColorBrush(Color.FromRgb(110, 110, 110));
             }
+
+            // Keep the serialization preview in sync with the currently
+            // rendered wall state.
+            UpdateSerializedPacketPreview();
         }
 
         /// <summary>
@@ -330,6 +335,24 @@ namespace LightWall.App
 
             WallFrame adjustedFrame = sourceFrame.CreateTranslated(centerYOffset, centerXOffset);
             _wallFrame.CopyFrom(adjustedFrame);
+        }
+
+        /// <summary>
+        /// Updates the packet preview text box so the current wall state can
+        /// be inspected as serialized data.
+        ///
+        /// This is a development/debugging aid. It helps validate that the
+        /// active WallFrame is being packed consistently before real serial
+        /// communication is introduced.
+        /// </summary>
+        private void UpdateSerializedPacketPreview()
+        {
+            byte[] payload = WallFrameSerializer.SerializeFrameData(_wallFrame);
+            byte[] packet = WallFrameSerializer.CreateFramePacket(_wallFrame);
+
+            SerializedPacketTextBox.Text =
+                $"Payload (5 bytes): {WallFrameSerializer.ToHexString(payload)}{Environment.NewLine}" +
+                $"Packet  (8 bytes): {WallFrameSerializer.ToHexString(packet)}";
         }
 
         /// <summary>
