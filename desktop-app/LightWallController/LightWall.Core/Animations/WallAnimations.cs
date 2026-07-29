@@ -103,5 +103,94 @@ namespace LightWall.Core.Animations
 
             return frames;
         }
+
+        /// <summary>
+        /// Creates a spiral-in / spiral-out animation sequence.
+        ///
+        /// Behavior:
+        /// - The wall fills in a spiral path from the outer edge toward the center
+        /// - Once fully spiraled inward, it reverses and unspirals back out
+        /// - By the end, the wall is dark again
+        ///
+        /// This is inspired by the spiral ideas in the old Arduino code, but
+        /// adapted into a frame-list animation for the desktop simulator.
+        /// </summary>
+        public static List<WallFrame> CreateSpiralInOutFrames()
+        {
+            var frames = new List<WallFrame>();
+            var spiralOrder = new List<(int Row, int Column)>();
+
+            int top = 0;
+            int bottom = WallFrame.Rows - 1;
+            int left = 0;
+            int right = WallFrame.Columns - 1;
+
+            // Build the coordinate order for a spiral path.
+            while (top <= bottom && left <= right)
+            {
+                for (int column = left; column <= right; column++)
+                {
+                    spiralOrder.Add((top, column));
+                }
+                top++;
+
+                for (int row = top; row <= bottom; row++)
+                {
+                    spiralOrder.Add((row, right));
+                }
+                right--;
+
+                if (top <= bottom)
+                {
+                    for (int column = right; column >= left; column--)
+                    {
+                        spiralOrder.Add((bottom, column));
+                    }
+                    bottom--;
+                }
+
+                if (left <= right)
+                {
+                    for (int row = bottom; row >= top; row--)
+                    {
+                        spiralOrder.Add((row, left));
+                    }
+                    left++;
+                }
+            }
+
+            // Spiral inward by cumulatively turning cells on.
+            for (int i = 0; i < spiralOrder.Count; i++)
+            {
+                var frame = new WallFrame();
+
+                for (int j = 0; j <= i; j++)
+                {
+                    var cell = spiralOrder[j];
+                    frame.SetCell(cell.Row, cell.Column, true);
+                }
+
+                frames.Add(frame);
+            }
+
+            // Unspiral outward by cumulatively turning cells off in reverse.
+            for (int i = spiralOrder.Count - 2; i >= 0; i--)
+            {
+                var frame = new WallFrame();
+
+                for (int j = 0; j <= i; j++)
+                {
+                    var cell = spiralOrder[j];
+                    frame.SetCell(cell.Row, cell.Column, true);
+                }
+
+                frames.Add(frame);
+            }
+
+            // Final all-off frame so the animation clearly ends dark.
+            frames.Add(new WallFrame());
+
+            return frames;
+        }
     }
 }

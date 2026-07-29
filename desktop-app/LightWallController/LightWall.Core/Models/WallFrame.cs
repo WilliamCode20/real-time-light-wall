@@ -184,6 +184,46 @@ namespace LightWall.Core.Models
         }
 
         /// <summary>
+        /// Creates a new WallFrame whose lit cells are shifted by the supplied
+        /// row and column offsets.
+        ///
+        /// Positive row offset moves content downward.
+        /// Positive column offset moves content to the right.
+        ///
+        /// Cells shifted outside the 5x7 wall are discarded.
+        ///
+        /// This is useful for "centering" or offset controls because it lets
+        /// us move the actual frame data itself rather than faking the shift
+        /// only in the UI render layer.
+        /// </summary>
+        public WallFrame CreateTranslated(int rowOffset, int columnOffset)
+        {
+            var translated = new WallFrame();
+
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int column = 0; column < Columns; column++)
+                {
+                    if (!_cells[row, column])
+                    {
+                        continue;
+                    }
+
+                    int translatedRow = row + rowOffset;
+                    int translatedColumn = column + columnOffset;
+
+                    if (translatedRow >= 0 && translatedRow < Rows &&
+                        translatedColumn >= 0 && translatedColumn < Columns)
+                    {
+                        translated.SetCell(translatedRow, translatedColumn, true);
+                    }
+                }
+            }
+
+            return translated;
+        }
+
+        /// <summary>
         /// Turns every cell OFF.
         ///
         /// This is just a convenience wrapper around SetAll(false).

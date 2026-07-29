@@ -97,7 +97,7 @@ namespace LightWall.App
         /// 1. Load and connect XAML
         /// 2. Configure animation timer
         /// 3. Build the 5x7 simulator button grid
-        /// 4. Update the speed text
+        /// 4. Update the control text labels
         /// 5. Render the initial wall state
         /// </summary>
         public MainWindow()
@@ -106,6 +106,8 @@ namespace LightWall.App
             ConfigureAnimationTimer();
             BuildWallGrid();
             UpdateSpeedText();
+            UpdateCenterText();
+            UpdateMeteorTailLengthText();
             RenderWall();
         }
 
@@ -231,6 +233,56 @@ namespace LightWall.App
         }
 
         /// <summary>
+        /// Updates the visible Center X / Center Y value labels.
+        ///
+        /// These sliders control how animation frames are translated before
+        /// being shown on the wall.
+        /// </summary>
+        private void UpdateCenterText()
+        {
+            CenterXValueTextBlock.Text = ((int)CenterXSlider.Value).ToString();
+            CenterYValueTextBlock.Text = ((int)CenterYSlider.Value).ToString();
+        }
+
+        /// <summary>
+        /// Updates the visible meteor tail length label.
+        /// </summary>
+        private void UpdateMeteorTailLengthText()
+        {
+            MeteorTailLengthValueTextBlock.Text = ((int)MeteorTailLengthSlider.Value).ToString();
+        }
+
+        /// <summary>
+        /// Returns the current X offset used for translating animation frames.
+        ///
+        /// Positive values move content to the right.
+        /// Negative values move content to the left.
+        /// </summary>
+        private int GetCenterXOffset()
+        {
+            return (int)CenterXSlider.Value;
+        }
+
+        /// <summary>
+        /// Returns the current Y offset used for translating animation frames.
+        ///
+        /// Positive values move content downward.
+        /// Negative values move content upward.
+        /// </summary>
+        private int GetCenterYOffset()
+        {
+            return (int)CenterYSlider.Value;
+        }
+
+        /// <summary>
+        /// Returns the current meteor tail length from the slider.
+        /// </summary>
+        private int GetMeteorTailLength()
+        {
+            return (int)MeteorTailLengthSlider.Value;
+        }
+
+        /// <summary>
         /// Converts a base interval into a speed-adjusted interval.
         ///
         /// Example:
@@ -261,6 +313,23 @@ namespace LightWall.App
         {
             int adjustedInterval = GetAdjustedIntervalMs(_baseAnimationIntervalMs);
             _animationTimer.Interval = TimeSpan.FromMilliseconds(adjustedInterval);
+        }
+
+        /// <summary>
+        /// Takes a source frame, applies the current X/Y translation controls,
+        /// and copies the adjusted result into the active wall frame.
+        ///
+        /// This is intentionally done at the frame-data level rather than only
+        /// at render time so the simulator remains faithful to the actual wall
+        /// state that would be sent to hardware later.
+        /// </summary>
+        private void ApplyFrameToWall(WallFrame sourceFrame)
+        {
+            int centerYOffset = GetCenterYOffset();
+            int centerXOffset = GetCenterXOffset();
+
+            WallFrame adjustedFrame = sourceFrame.CreateTranslated(centerYOffset, centerXOffset);
+            _wallFrame.CopyFrom(adjustedFrame);
         }
 
         /// <summary>
@@ -295,7 +364,7 @@ namespace LightWall.App
             _baseAnimationIntervalMs = baseIntervalMs;
             ApplyCurrentSpeedToTimer();
 
-            _wallFrame.CopyFrom(_animationFrames[_animationFrameIndex]);
+            ApplyFrameToWall(_animationFrames[_animationFrameIndex]);
             RenderWall();
 
             AnimationStatusTextBlock.Text = $"Animation: {animationName}";
@@ -322,7 +391,7 @@ namespace LightWall.App
             ApplyCurrentSpeedToTimer();
 
             // Generate and show the very first frame immediately.
-            _wallFrame.CopyFrom(_proceduralFrameGenerator(_proceduralStep));
+            ApplyFrameToWall(_proceduralFrameGenerator(_proceduralStep));
             RenderWall();
 
             AnimationStatusTextBlock.Text = $"Animation: {animationName}";
@@ -368,7 +437,7 @@ namespace LightWall.App
             if (_proceduralFrameGenerator is not null)
             {
                 _proceduralStep++;
-                _wallFrame.CopyFrom(_proceduralFrameGenerator(_proceduralStep));
+                ApplyFrameToWall(_proceduralFrameGenerator(_proceduralStep));
                 RenderWall();
                 return;
             }
@@ -387,7 +456,7 @@ namespace LightWall.App
                 _animationFrameIndex = 0;
             }
 
-            _wallFrame.CopyFrom(_animationFrames[_animationFrameIndex]);
+            ApplyFrameToWall(_animationFrames[_animationFrameIndex]);
             RenderWall();
         }
 
@@ -547,15 +616,28 @@ namespace LightWall.App
         }
 
         /// <summary>
+        /// Starts the prebuilt spiral-in / spiral-out animation.
+        ///
+        /// This uses a frame-list animation generated in WallAnimations.
+        /// </summary>
+        private void StartSpiralButton_Click(object sender, RoutedEventArgs e)
+        {
+            StartFrameAnimation(
+                WallAnimations.CreateSpiralInOutFrames(),
+                120,
+                "spiral");
+        }
+
+        /// <summary>
         /// Starts the procedural meteor animation.
         ///
-        /// This is a good example of an animation generated from rules rather
-        /// than from a fixed prebuilt list.
+        /// This now uses the Meteor Tail Length slider so the user can
+        /// change how long the trailing meteor appears.
         /// </summary>
         private void StartMeteorButton_Click(object sender, RoutedEventArgs e)
         {
             StartProceduralAnimation(
-                WallProceduralAnimations.GenerateMeteorFrame,
+                step => WallProceduralAnimations.GenerateMeteorFrame(step, GetMeteorTailLength()),
                 120,
                 "procedural meteor");
         }
@@ -572,6 +654,21 @@ namespace LightWall.App
                 step => WallProceduralAnimations.GenerateSparkleStormFrame(step, _random),
                 110,
                 "procedural sparkle storm");
+        }
+
+        /// <summary>
+        /// Starts the procedural EQ bumper animation.
+        ///
+        /// This is a fake equalizer-like behavior for now. It does not use
+        /// real audio yet, but it gives us a strong visual test surface for
+        /// future music-reactive development.
+        /// </summary>
+        private void StartEqBumperButton_Click(object sender, RoutedEventArgs e)
+        {
+            StartProceduralAnimation(
+                step => WallProceduralAnimations.GenerateEqBumperFrame(step, _random),
+                100,
+                "procedural EQ bumper");
         }
 
         /// <summary>
@@ -606,6 +703,42 @@ namespace LightWall.App
             {
                 ApplyCurrentSpeedToTimer();
             }
+        }
+
+        /// <summary>
+        /// Runs whenever either Center X or Center Y changes.
+        ///
+        /// These controls affect how generated animation frames are translated
+        /// before being displayed. The label text is updated immediately.
+        ///
+        /// We do not force a re-render of static content here because these
+        /// controls are currently meant to behave as animation controls.
+        /// Their effect will be visible on the next animation frame.
+        /// </summary>
+        private void CenterSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (CenterXValueTextBlock is null || CenterYValueTextBlock is null)
+            {
+                return;
+            }
+
+            UpdateCenterText();
+        }
+
+        /// <summary>
+        /// Runs whenever the meteor tail length slider changes.
+        ///
+        /// The label updates immediately. The new tail length will be picked up
+        /// the next time the meteor animation is started or the next frame is generated.
+        /// </summary>
+        private void MeteorTailLengthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (MeteorTailLengthValueTextBlock is null)
+            {
+                return;
+            }
+
+            UpdateMeteorTailLengthText();
         }
 
         /// <summary>

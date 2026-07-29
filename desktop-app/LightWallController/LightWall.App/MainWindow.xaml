@@ -38,7 +38,6 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -51,168 +50,301 @@
                        Foreground="White"/>
 
             <!-- Helpful subtitle for the current prototype -->
-            <TextBlock Text="Click cells to toggle bulbs on and off, or run pattern animations."
+            <TextBlock Text="Click cells to toggle bulbs, test static patterns, or run animated and procedural effects."
                        FontSize="14"
                        Foreground="#CCCCCC"
                        Margin="0,6,0,0"/>
         </StackPanel>
 
-        <!-- Static control buttons -->
-        <WrapPanel Grid.Row="1" Margin="0,0,0,12">
-            <!--
-                WrapPanel is used instead of a horizontal StackPanel because
-                there are now enough buttons that wrapping to a new line is useful.
-            -->
-
-            <Button Content="Clear"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="ClearButton_Click"/>
-
-            <Button Content="Fill"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="FillButton_Click"/>
-
-            <Button Content="Randomize"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="RandomizeButton_Click"/>
-
-            <Button Content="Row 3"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="RowThreeButton_Click"/>
-
-            <Button Content="Column 4"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="ColumnFourButton_Click"/>
-
-            <Button Content="Checkerboard"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="CheckerboardButton_Click"/>
-
-            <Button Content="Border"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="BorderButton_Click"/>
-
-            <Button Content="Cross"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="CrossButton_Click"/>
-
-            <Button Content="Sparkle"
-                    Width="110"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="SparkleButton_Click"/>
-        </WrapPanel>
-
-        <!-- Animation buttons -->
-        <WrapPanel Grid.Row="2" Margin="0,0,0,12">
-            <Button Content="Start Row Sweep"
-                    Width="150"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="StartRowSweepButton_Click"/>
-
-            <Button Content="Start Border Pulse"
-                    Width="150"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="StartBorderPulseButton_Click"/>
-
-            <Button Content="Start Meteor"
-                    Width="150"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="StartMeteorButton_Click"/>
-
-            <Button Content="Start Sparkle Storm"
-                    Width="150"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="StartSparkleStormButton_Click"/>
-
-            <Button Content="Stop Animation"
-                    Width="150"
-                    Height="36"
-                    Margin="0,0,12,12"
-                    Click="StopAnimationButton_Click"/>
-        </WrapPanel>
-
-        <!-- Speed control + status -->
-        <Grid Grid.Row="3" Margin="0,0,0,20">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="260"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="40"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Label for the speed control -->
-            <TextBlock Grid.Column="0"
-                       Text="Animation Speed"
-                       VerticalAlignment="Center"
-                       FontSize="14"
+        <!-- Static patterns section -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,12">
+            <TextBlock Text="Static Patterns"
+                       FontSize="16"
+                       FontWeight="Bold"
                        Foreground="White"
-                       Margin="0,0,12,0"/>
+                       Margin="0,0,0,10"/>
 
-            <!--
-                Speed slider:
-                100 = normal speed
-                200 = twice as fast
-                50  = half speed
+            <WrapPanel>
+                <Button Content="Clear"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="ClearButton_Click"/>
 
-                This slider does not change the pattern logic itself.
-                It changes the timer interval used for playback.
-            -->
-            <Slider x:Name="SpeedSlider"
-                    Grid.Column="1"
-                    Minimum="40"
-                    Maximum="200"
-                    Value="100"
-                    TickFrequency="10"
-                    SmallChange="5"
-                    LargeChange="10"
-                    VerticalAlignment="Center"
-                    ValueChanged="SpeedSlider_ValueChanged"/>
+                <Button Content="Fill"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="FillButton_Click"/>
 
-            <!-- Displays current slider percentage -->
-            <TextBlock x:Name="SpeedValueTextBlock"
-                       Grid.Column="2"
-                       Text="100%"
-                       VerticalAlignment="Center"
-                       FontSize="14"
-                       Foreground="#DDDDDD"
-                       Margin="12,0,0,0"/>
+                <Button Content="Randomize"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="RandomizeButton_Click"/>
 
-            <!-- Spacer -->
-            <Border Grid.Column="3"/>
+                <Button Content="Row 3"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="RowThreeButton_Click"/>
 
-            <!-- Animation status label -->
-            <TextBlock x:Name="AnimationStatusTextBlock"
-                       Grid.Column="4"
-                       Text="Animation: stopped"
-                       VerticalAlignment="Center"
-                       FontSize="14"
-                       Foreground="#DDDDDD"/>
-        </Grid>
+                <Button Content="Column 4"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="ColumnFourButton_Click"/>
+
+                <Button Content="Checkerboard"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="CheckerboardButton_Click"/>
+
+                <Button Content="Border"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="BorderButton_Click"/>
+
+                <Button Content="Cross"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="CrossButton_Click"/>
+
+                <Button Content="Sparkle"
+                        Width="96"
+                        Height="32"
+                        Margin="0,0,10,10"
+                        Click="SparkleButton_Click"/>
+            </WrapPanel>
+        </StackPanel>
+
+        <!-- Animation sections + controls -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,20">
+            <!-- Pre-set animations -->
+            <TextBlock Text="Pre-Set Animations"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       Margin="0,0,0,10"/>
+
+            <WrapPanel Margin="0,0,0,14">
+                <Button Content="Start Row Sweep"
+                        Width="150"
+                        Height="36"
+                        Margin="0,0,12,12"
+                        Click="StartRowSweepButton_Click"/>
+
+                <Button Content="Start Border Pulse"
+                        Width="150"
+                        Height="36"
+                        Margin="0,0,12,12"
+                        Click="StartBorderPulseButton_Click"/>
+
+                <Button Content="Start Spiral"
+                        Width="150"
+                        Height="36"
+                        Margin="0,0,12,12"
+                        Click="StartSpiralButton_Click"/>
+            </WrapPanel>
+
+            <!-- Procedural animations -->
+            <TextBlock Text="Procedural Animations"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       Margin="0,0,0,10"/>
+
+            <WrapPanel Margin="0,0,0,14">
+                <Button Content="Start Meteor"
+                        Width="150"
+                        Height="36"
+                        Margin="0,0,12,12"
+                        Click="StartMeteorButton_Click"/>
+
+                <Button Content="Start Sparkle Storm"
+                        Width="150"
+                        Height="36"
+                        Margin="0,0,12,12"
+                        Click="StartSparkleStormButton_Click"/>
+
+                <Button Content="Start EQ Bumper"
+                        Width="150"
+                        Height="36"
+                        Margin="0,0,12,12"
+                        Click="StartEqBumperButton_Click"/>
+
+                <Button Content="Stop Animation"
+                        Width="150"
+                        Height="36"
+                        Margin="0,0,12,12"
+                        Click="StopAnimationButton_Click"/>
+            </WrapPanel>
+
+            <!-- Animation controls -->
+            <TextBlock Text="Animation Controls"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       Margin="0,0,0,10"/>
+
+            <Grid Margin="0,0,0,8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="70"/>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Speed -->
+                <TextBlock Grid.Row="0"
+                           Grid.Column="0"
+                           Text="Speed"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="White"
+                           Margin="0,0,12,10"/>
+
+                <Slider x:Name="SpeedSlider"
+                        Grid.Row="0"
+                        Grid.Column="1"
+                        Minimum="40"
+                        Maximum="200"
+                        Value="100"
+                        TickFrequency="10"
+                        SmallChange="5"
+                        LargeChange="10"
+                        VerticalAlignment="Center"
+                        Margin="0,0,0,10"
+                        ValueChanged="SpeedSlider_ValueChanged"/>
+
+                <TextBlock x:Name="SpeedValueTextBlock"
+                           Grid.Row="0"
+                           Grid.Column="2"
+                           Text="100%"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="#DDDDDD"
+                           Margin="12,0,0,10"/>
+
+                <!-- Center X -->
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Text="Center X"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="White"
+                           Margin="0,0,12,10"/>
+
+                <Slider x:Name="CenterXSlider"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Minimum="-2"
+                        Maximum="2"
+                        Value="0"
+                        TickFrequency="1"
+                        SmallChange="1"
+                        LargeChange="1"
+                        IsSnapToTickEnabled="True"
+                        VerticalAlignment="Center"
+                        Margin="0,0,0,10"
+                        ValueChanged="CenterSlider_ValueChanged"/>
+
+                <TextBlock x:Name="CenterXValueTextBlock"
+                           Grid.Row="1"
+                           Grid.Column="2"
+                           Text="0"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="#DDDDDD"
+                           Margin="12,0,0,10"/>
+
+                <!-- Center Y -->
+                <TextBlock Grid.Row="2"
+                           Grid.Column="0"
+                           Text="Center Y"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="White"
+                           Margin="0,0,12,10"/>
+
+                <Slider x:Name="CenterYSlider"
+                        Grid.Row="2"
+                        Grid.Column="1"
+                        Minimum="-2"
+                        Maximum="2"
+                        Value="0"
+                        TickFrequency="1"
+                        SmallChange="1"
+                        LargeChange="1"
+                        IsSnapToTickEnabled="True"
+                        VerticalAlignment="Center"
+                        Margin="0,0,0,10"
+                        ValueChanged="CenterSlider_ValueChanged"/>
+
+                <TextBlock x:Name="CenterYValueTextBlock"
+                           Grid.Row="2"
+                           Grid.Column="2"
+                           Text="0"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="#DDDDDD"
+                           Margin="12,0,0,10"/>
+
+                <!-- Meteor Tail Length -->
+                <TextBlock Grid.Row="3"
+                           Grid.Column="0"
+                           Text="Meteor Tail"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="White"/>
+
+                <Slider x:Name="MeteorTailLengthSlider"
+                        Grid.Row="3"
+                        Grid.Column="1"
+                        Minimum="1"
+                        Maximum="5"
+                        Value="3"
+                        TickFrequency="1"
+                        SmallChange="1"
+                        LargeChange="1"
+                        IsSnapToTickEnabled="True"
+                        VerticalAlignment="Center"
+                        ValueChanged="MeteorTailLengthSlider_ValueChanged"/>
+
+                <TextBlock x:Name="MeteorTailLengthValueTextBlock"
+                           Grid.Row="3"
+                           Grid.Column="2"
+                           Text="3"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="#DDDDDD"
+                           Margin="12,0,0,0"/>
+
+                <!-- Animation status -->
+                <TextBlock x:Name="AnimationStatusTextBlock"
+                           Grid.Row="0"
+                           Grid.Column="4"
+                           Grid.RowSpan="4"
+                           Text="Animation: stopped"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           Foreground="#DDDDDD"/>
+            </Grid>
+        </StackPanel>
 
         <!-- Visual simulator area -->
-        <Border Grid.Row="4"
+        <Border Grid.Row="3"
                 Background="#2B2B2B"
                 CornerRadius="16"
                 Padding="24">
