@@ -33,75 +33,92 @@ namespace LightWall.App
     public partial class MainWindow : Window
     {
         /// <summary>
-        /// The single "active" wall state currently being displayed.
+        /// The current active wall state being displayed.
         ///
-        /// This object is the truth of what the simulated wall looks like.
-        /// The UI does not store wall truth directly; it reads from this object.
+        /// This object is the truth of what the simulator currently shows.
+        /// The UI does not store wall state directly; it reads from this model.
         /// </summary>
         private readonly WallFrame _wallFrame = new();
 
         /// <summary>
-        /// Shared random number generator for pattern/random operations.
-        ///
-        /// Keeping one Random instance is better than recreating one repeatedly.
+        /// Shared random number generator used by random/procedural effects.
         /// </summary>
         private readonly Random _random = new();
 
         /// <summary>
-        /// WPF timer used to drive animation playback.
+        /// WPF timer that drives animation playback.
         ///
-        /// Unlike blocking wait/delay logic, this lets the UI keep responding
-        /// while animation updates happen over time.
+        /// Each timer tick advances to the next frame or generates the next
+        /// procedural frame, then redraws the wall.
         /// </summary>
         private readonly DispatcherTimer _animationTimer = new();
 
         /// <summary>
-        /// The currently loaded animation frame sequence.
-        ///
-        /// Example:
-        /// - row sweep frames
-        /// - border pulse frames
-        ///
-        /// The timer advances through this list over time.
+        /// Stores a prebuilt list of animation frames when using a fixed
+        /// sequence animation like row sweep or border pulse.
         /// </summary>
         private List<WallFrame> _animationFrames = new();
 
         /// <summary>
-        /// Index of the currently displayed frame in the animation sequence.
+        /// Tracks which frame of the current prebuilt animation is active.
         /// </summary>
         private int _animationFrameIndex = 0;
 
         /// <summary>
+        /// Stores the currently active procedural frame generator, if any.
+        ///
+        /// A procedural generator is a function that takes a step number
+        /// and returns a WallFrame for that step.
+        ///
+        /// If this is null, no procedural animation is active.
+        /// </summary>
+        private Func<int, WallFrame>? _proceduralFrameGenerator;
+
+        /// <summary>
+        /// Tracks the current procedural step number.
+        /// Each timer tick usually increments this.
+        /// </summary>
+        private int _proceduralStep = 0;
+
+        /// <summary>
+        /// Stores the "base" interval of the current animation before speed
+        /// slider adjustment is applied.
+        ///
+        /// Example:
+        /// - row sweep may want a base interval of 180 ms
+        /// - speed slider then modifies that live
+        /// </summary>
+        private int _baseAnimationIntervalMs = 180;
+
+        /// <summary>
         /// Constructor for the main window.
         ///
-        /// This runs when the app creates the window.
-        ///
-        /// Startup sequence:
-        /// 1. InitializeComponent() loads and connects the XAML
-        /// 2. ConfigureAnimationTimer() prepares timer-based animation playback
-        /// 3. BuildWallGrid() creates the 35 simulator buttons
-        /// 4. RenderWall() paints the initial state to the UI
+        /// Startup flow:
+        /// 1. Load and connect XAML
+        /// 2. Configure animation timer
+        /// 3. Build the 5x7 simulator button grid
+        /// 4. Update the speed text
+        /// 5. Render the initial wall state
         /// </summary>
         public MainWindow()
         {
             InitializeComponent();
             ConfigureAnimationTimer();
             BuildWallGrid();
+            UpdateSpeedText();
             RenderWall();
         }
 
         /// <summary>
-        /// Configures the animation timer.
+        /// Sets up the timer used for animation playback.
         ///
-        /// Important concepts:
-        /// - Interval = how often the timer ticks
-        /// - Tick event = what method runs each time the timer fires
-        ///
-        /// The interval here is only a default; StartAnimation(...) can change it.
+        /// Important idea:
+        /// We use a DispatcherTimer instead of blocking waits or sleeps because
+        /// this keeps the UI responsive while animation plays.
         /// </summary>
         private void ConfigureAnimationTimer()
         {
-            _animationTimer.Interval = TimeSpan.FromMilliseconds(180);
+            _animationTimer.Interval = TimeSpan.FromMilliseconds(_baseAnimationIntervalMs);
             _animationTimer.Tick += AnimationTimer_Tick;
         }
 
@@ -202,94 +219,174 @@ namespace LightWall.App
         }
 
         /// <summary>
-        /// Starts playback of a prepared animation sequence.
+        /// Updates the small speed text label beside the slider.
         ///
-        /// Parameters:
-        /// - frames: the ordered list of WallFrame objects to play
-        /// - intervalMs: how many milliseconds between frames
-        /// - animationName: text label shown in the UI status
+        /// Example:
+        /// - slider at 100 -> "100%"
+        /// - slider at 150 -> "150%"
+        /// </summary>
+        private void UpdateSpeedText()
+        {
+            SpeedValueTextBlock.Text = $"{(int)SpeedSlider.Value}%";
+        }
+
+        /// <summary>
+        /// Converts a base interval into a speed-adjusted interval.
+        ///
+        /// Example:
+        /// - base interval = 200 ms
+        /// - speed = 100%  -> 200 ms actual
+        /// - speed = 200%  -> 100 ms actual (faster)
+        /// - speed = 50%   -> 400 ms actual (slower)
+        ///
+        /// We clamp the result to a minimum value so absurdly fast timer
+        /// intervals do not become unstable or unreadable.
+        /// </summary>
+        private int GetAdjustedIntervalMs(int baseIntervalMs)
+        {
+            double speedMultiplier = SpeedSlider.Value / 100.0;
+            int adjustedInterval = (int)Math.Round(baseIntervalMs / speedMultiplier);
+
+            return Math.Max(30, adjustedInterval);
+        }
+
+        /// <summary>
+        /// Applies the current slider-controlled speed to the timer interval.
+        ///
+        /// This is separated into its own method so it can be reused whenever:
+        /// - a new animation starts
+        /// - the slider changes while an animation is already running
+        /// </summary>
+        private void ApplyCurrentSpeedToTimer()
+        {
+            int adjustedInterval = GetAdjustedIntervalMs(_baseAnimationIntervalMs);
+            _animationTimer.Interval = TimeSpan.FromMilliseconds(adjustedInterval);
+        }
+
+        /// <summary>
+        /// Starts a prebuilt frame-list animation.
+        ///
+        /// This is used for animations that already exist as ordered frame
+        /// sequences, such as row sweep or border pulse.
         ///
         /// Flow:
-        /// 1. store the frames
-        /// 2. reset frame index
-        /// 3. set timer speed
-        /// 4. show first frame immediately
-        /// 5. update UI status
-        /// 6. start timer
+        /// 1. clear any procedural animation
+        /// 2. store the frame list
+        /// 3. reset animation index
+        /// 4. store the base interval
+        /// 5. apply speed control
+        /// 6. show the first frame immediately
+        /// 7. update status text
+        /// 8. start the timer
         /// </summary>
-        private void StartAnimation(List<WallFrame> frames, int intervalMs, string animationName)
+        private void StartFrameAnimation(List<WallFrame> frames, int baseIntervalMs, string animationName)
         {
-            // If there are no frames, there's nothing to animate.
             if (frames.Count == 0)
             {
                 return;
             }
 
+            _proceduralFrameGenerator = null;
+            _proceduralStep = 0;
+
             _animationFrames = frames;
             _animationFrameIndex = 0;
 
-            // Set timer speed for this specific animation.
-            _animationTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
+            _baseAnimationIntervalMs = baseIntervalMs;
+            ApplyCurrentSpeedToTimer();
 
-            // Immediately show the first frame.
             _wallFrame.CopyFrom(_animationFrames[_animationFrameIndex]);
             RenderWall();
 
-            // Update the visible status text.
             AnimationStatusTextBlock.Text = $"Animation: {animationName}";
-
-            // Begin timer-driven playback.
             _animationTimer.Start();
         }
 
         /// <summary>
-        /// Stops animation playback and resets animation state.
+        /// Starts a procedural animation.
+        ///
+        /// This is used when frames are generated on demand instead of
+        /// coming from a prebuilt list.
+        ///
+        /// The generator function will be called each tick with the current step.
+        /// </summary>
+        private void StartProceduralAnimation(Func<int, WallFrame> frameGenerator, int baseIntervalMs, string animationName)
+        {
+            _animationFrames.Clear();
+            _animationFrameIndex = 0;
+
+            _proceduralFrameGenerator = frameGenerator;
+            _proceduralStep = 0;
+
+            _baseAnimationIntervalMs = baseIntervalMs;
+            ApplyCurrentSpeedToTimer();
+
+            // Generate and show the very first frame immediately.
+            _wallFrame.CopyFrom(_proceduralFrameGenerator(_proceduralStep));
+            RenderWall();
+
+            AnimationStatusTextBlock.Text = $"Animation: {animationName}";
+            _animationTimer.Start();
+        }
+
+        /// <summary>
+        /// Stops any currently running animation and resets playback state.
         ///
         /// This is called when:
         /// - the user clicks Stop Animation
-        /// - the user manually edits cells
+        /// - the user manually edits the wall
         /// - the user applies a static pattern
-        ///
-        /// Why stop animation before manual operations?
-        /// Because otherwise the timer would immediately overwrite the user's change.
         /// </summary>
         private void StopAnimation()
         {
             _animationTimer.Stop();
+
             _animationFrames.Clear();
             _animationFrameIndex = 0;
+
+            _proceduralFrameGenerator = null;
+            _proceduralStep = 0;
+
             AnimationStatusTextBlock.Text = "Animation: stopped";
         }
 
         /// <summary>
-        /// Runs every time the animation timer ticks.
+        /// Timer tick handler.
         ///
-        /// This advances the animation by one frame and re-renders the wall.
+        /// This runs repeatedly while the timer is active.
         ///
-        /// Flow:
-        /// 1. ensure frames exist
-        /// 2. move to next frame index
-        /// 3. wrap around if needed
-        /// 4. copy next frame into _wallFrame
-        /// 5. render updated wall
+        /// There are two playback modes:
+        /// 1. procedural animation mode
+        /// 2. prebuilt frame-list mode
+        ///
+        /// The method checks which mode is active and advances accordingly.
         /// </summary>
         private void AnimationTimer_Tick(object? sender, EventArgs e)
         {
+            // Procedural animation mode:
+            // generate a fresh frame from the current step number.
+            if (_proceduralFrameGenerator is not null)
+            {
+                _proceduralStep++;
+                _wallFrame.CopyFrom(_proceduralFrameGenerator(_proceduralStep));
+                RenderWall();
+                return;
+            }
+
+            // Prebuilt frame-list mode:
+            // step through the stored list of frames.
             if (_animationFrames.Count == 0)
             {
                 return;
             }
 
-            // Advance to the next frame.
             _animationFrameIndex++;
 
-            // Loop back to the beginning if we hit the end.
             if (_animationFrameIndex >= _animationFrames.Count)
             {
                 _animationFrameIndex = 0;
             }
 
-            // Copy the new frame into the active wall state and redraw.
             _wallFrame.CopyFrom(_animationFrames[_animationFrameIndex]);
             RenderWall();
         }
@@ -428,29 +525,53 @@ namespace LightWall.App
         }
 
         /// <summary>
-        /// Starts the row sweep animation.
-        ///
-        /// This uses:
-        /// - WallAnimations to create the frame sequence
-        /// - StartAnimation(...) to play those frames over time
+        /// Starts the prebuilt row sweep animation.
         /// </summary>
         private void StartRowSweepButton_Click(object sender, RoutedEventArgs e)
         {
-            StartAnimation(
+            StartFrameAnimation(
                 WallAnimations.CreateRowSweepFrames(),
                 180,
                 "row sweep");
         }
 
         /// <summary>
-        /// Starts the border pulse animation.
+        /// Starts the prebuilt border pulse animation.
         /// </summary>
         private void StartBorderPulseButton_Click(object sender, RoutedEventArgs e)
         {
-            StartAnimation(
+            StartFrameAnimation(
                 WallAnimations.CreateBorderPulseFrames(),
                 240,
                 "border pulse");
+        }
+
+        /// <summary>
+        /// Starts the procedural meteor animation.
+        ///
+        /// This is a good example of an animation generated from rules rather
+        /// than from a fixed prebuilt list.
+        /// </summary>
+        private void StartMeteorButton_Click(object sender, RoutedEventArgs e)
+        {
+            StartProceduralAnimation(
+                WallProceduralAnimations.GenerateMeteorFrame,
+                120,
+                "procedural meteor");
+        }
+
+        /// <summary>
+        /// Starts the procedural sparkle storm animation.
+        ///
+        /// This uses a lambda because the generator needs access to the shared
+        /// Random instance owned by this window.
+        /// </summary>
+        private void StartSparkleStormButton_Click(object sender, RoutedEventArgs e)
+        {
+            StartProceduralAnimation(
+                step => WallProceduralAnimations.GenerateSparkleStormFrame(step, _random),
+                110,
+                "procedural sparkle storm");
         }
 
         /// <summary>
@@ -459,6 +580,32 @@ namespace LightWall.App
         private void StopAnimationButton_Click(object sender, RoutedEventArgs e)
         {
             StopAnimation();
+        }
+
+        /// <summary>
+        /// Runs whenever the speed slider value changes.
+        ///
+        /// This does two things:
+        /// 1. updates the visible percentage text
+        /// 2. immediately applies the new speed to the timer if animation is running
+        ///
+        /// That means you can adjust animation speed live while watching it.
+        /// </summary>
+        private void SpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            // During startup, ValueChanged may fire as the XAML initializes.
+            // This guard keeps us safe if the named UI elements are not fully ready yet.
+            if (SpeedValueTextBlock is null)
+            {
+                return;
+            }
+
+            UpdateSpeedText();
+
+            if (_animationTimer.IsEnabled)
+            {
+                ApplyCurrentSpeedToTimer();
+            }
         }
 
         /// <summary>

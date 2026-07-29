@@ -5,10 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Light Wall Simulator"
-        Height="720"
-        Width="1000"
-        MinHeight="600"
-        MinWidth="800"
+        Height="780"
+        Width="1020"
+        MinHeight="650"
+        MinWidth="820"
         Background="#1E1E1E">
 
     <!--
@@ -27,13 +27,15 @@
         <!--
             Main layout grid for the whole window.
 
-            We split the window into 4 stacked rows:
+            We split the window into 5 stacked rows:
             Row 0 = title / descriptive text
             Row 1 = static pattern controls
-            Row 2 = animation controls + status
-            Row 3 = the actual 5x7 wall simulator
+            Row 2 = animation control buttons
+            Row 3 = speed control + animation status
+            Row 4 = the actual 5x7 wall simulator
         -->
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -117,40 +119,100 @@
                     Click="SparkleButton_Click"/>
         </WrapPanel>
 
-        <!-- Animation controls -->
-        <WrapPanel Grid.Row="2" Margin="0,0,0,20">
+        <!-- Animation buttons -->
+        <WrapPanel Grid.Row="2" Margin="0,0,0,12">
             <Button Content="Start Row Sweep"
-                    Width="140"
+                    Width="150"
                     Height="36"
                     Margin="0,0,12,12"
                     Click="StartRowSweepButton_Click"/>
 
             <Button Content="Start Border Pulse"
-                    Width="140"
+                    Width="150"
                     Height="36"
                     Margin="0,0,12,12"
                     Click="StartBorderPulseButton_Click"/>
 
+            <Button Content="Start Meteor"
+                    Width="150"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="StartMeteorButton_Click"/>
+
+            <Button Content="Start Sparkle Storm"
+                    Width="150"
+                    Height="36"
+                    Margin="0,0,12,12"
+                    Click="StartSparkleStormButton_Click"/>
+
             <Button Content="Stop Animation"
-                    Width="140"
+                    Width="150"
                     Height="36"
                     Margin="0,0,12,12"
                     Click="StopAnimationButton_Click"/>
+        </WrapPanel>
+
+        <!-- Speed control + status -->
+        <Grid Grid.Row="3" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="40"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Label for the speed control -->
+            <TextBlock Grid.Column="0"
+                       Text="Animation Speed"
+                       VerticalAlignment="Center"
+                       FontSize="14"
+                       Foreground="White"
+                       Margin="0,0,12,0"/>
 
             <!--
-                Status text that the code-behind updates to reflect whether
-                an animation is currently running.
+                Speed slider:
+                100 = normal speed
+                200 = twice as fast
+                50  = half speed
+
+                This slider does not change the pattern logic itself.
+                It changes the timer interval used for playback.
             -->
-            <TextBlock x:Name="AnimationStatusTextBlock"
-                       Text="Animation: stopped"
+            <Slider x:Name="SpeedSlider"
+                    Grid.Column="1"
+                    Minimum="40"
+                    Maximum="200"
+                    Value="100"
+                    TickFrequency="10"
+                    SmallChange="5"
+                    LargeChange="10"
+                    VerticalAlignment="Center"
+                    ValueChanged="SpeedSlider_ValueChanged"/>
+
+            <!-- Displays current slider percentage -->
+            <TextBlock x:Name="SpeedValueTextBlock"
+                       Grid.Column="2"
+                       Text="100%"
                        VerticalAlignment="Center"
                        FontSize="14"
                        Foreground="#DDDDDD"
-                       Margin="12,8,0,0"/>
-        </WrapPanel>
+                       Margin="12,0,0,0"/>
+
+            <!-- Spacer -->
+            <Border Grid.Column="3"/>
+
+            <!-- Animation status label -->
+            <TextBlock x:Name="AnimationStatusTextBlock"
+                       Grid.Column="4"
+                       Text="Animation: stopped"
+                       VerticalAlignment="Center"
+                       FontSize="14"
+                       Foreground="#DDDDDD"/>
+        </Grid>
 
         <!-- Visual simulator area -->
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 Background="#2B2B2B"
                 CornerRadius="16"
                 Padding="24">
