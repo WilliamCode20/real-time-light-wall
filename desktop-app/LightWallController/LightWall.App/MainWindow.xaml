@@ -359,6 +359,35 @@
                            FontSize="12"
                            Foreground="#777777"
                            Margin="0,6,0,0"/>
+
+                <!--
+                    The output pipeline readout.
+
+                    Everything downstream of the engine reports here: how fast
+                    the engine is ticking, how fast packets are going out, and
+                    what the virtual wall on the other end made of them.
+
+                    Until real hardware is attached this is the main evidence
+                    that the whole chain works. "Sending 30 pkt/s" with a
+                    matching count of packets accepted and no checksum failures
+                    means frames are reaching a wall intact - just a simulated
+                    one for now.
+                -->
+                <TextBlock x:Name="OutputStatusTextBlock"
+                           Text="Output: starting..."
+                           FontSize="13"
+                           FontWeight="Bold"
+                           Foreground="#AAAAAA"
+                           TextWrapping="Wrap"
+                           Margin="0,12,0,0"/>
+
+                <TextBlock x:Name="OutputStatsTextBlock"
+                           Text=""
+                           FontSize="12"
+                           FontFamily="Consolas"
+                           Foreground="#777777"
+                           TextWrapping="Wrap"
+                           Margin="0,4,0,0"/>
             </StackPanel>
         </Grid>
     </Grid>

@@ -6,28 +6,41 @@ using LightWall.Core.Effects;
 using LightWall.Core.Engine;
 using LightWall.Core.Models;
 using LightWall.Core.Serialization;
+using LightWall.Core.Transport;
 
 namespace LightWall.App
 {
     /// <summary>
     /// Code-behind for the main simulator window.
     ///
-    /// WHAT THIS CLASS IS RESPONSIBLE FOR NOW
+    /// WHAT THIS CLASS IS RESPONSIBLE FOR
     ///
     /// Only three things:
     ///
     ///   1. building the buttons
-    ///   2. passing slider values along to the engine
-    ///   3. drawing whatever the engine says the wall looks like
+    ///   2. passing slider values along to the show clock
+    ///   3. drawing whatever the clock says the wall looks like
     ///
     /// That is a deliberate reduction. This file used to also decide how
     /// animations played, track which frame was current, apply the offset
     /// sliders, and hold the wall state itself.
     ///
-    /// All of that moved into WallEngine, for one practical reason: the serial
-    /// layer and the tests both need to know what the wall should look like, and
-    /// neither of them can reasonably ask a window. Logic that lives in a window
-    /// can only ever be used by that window.
+    /// HOW THE PIECES FIT TOGETHER NOW
+    ///
+    ///   WallShowClock       ticks the engine on its own background thread
+    ///        |
+    ///        +--> this window       draws it, around 60 times a second
+    ///        |
+    ///        +--> WallOutputService samples it 30 times a second, builds
+    ///                               packets, and hands them to a transport
+    ///                                   |
+    ///                                   +--> LoopbackTransport (virtual wall)
+    ///                                   +--> SerialTransport   (not yet built)
+    ///
+    /// The important part is that the window is now just one of the clock's
+    /// consumers rather than the thing driving everything. The wall keeps
+    /// running at its own steady rate no matter what the interface is doing,
+    /// and a slow serial write can never freeze the window.
     ///
     /// The rule of thumb going forward is that if a piece of logic would still
     /// make sense with no screen attached, it belongs in LightWall.Core rather
@@ -40,6 +53,11 @@ namespace LightWall.App
         /// Updating it every frame would make it flicker too fast to read.
         /// </summary>
         private const double FrameRateUpdateIntervalSeconds = 0.5;
+
+        /// <summary>
+        /// How often the output statistics readout is refreshed, in seconds.
+        /// </summary>
+        private const double OutputStatsUpdateIntervalSeconds = 0.25;
 
         // ------------------------------------------------------------------
         // Brushes
@@ -76,14 +94,45 @@ namespace LightWall.App
         private static readonly Brush InactiveEffectBrush = CreateFrozenBrush(221, 221, 221);
 
         /// <summary>
-        /// The engine: the single authority on what the wall should look like.
+        /// The show clock: owns the engine and runs it on a background thread.
+        ///
+        /// The window never touches the engine directly any more. It asks the
+        /// clock to make changes, and asks the clock what to draw.
         /// </summary>
-        private readonly WallEngine _engine = new();
+        private readonly WallShowClock _clock = new();
+
+        /// <summary>
+        /// The virtual wall: a software model of the Arduino, standing in for
+        /// real hardware.
+        ///
+        /// Everything downstream of the engine - rate limiting, packet building,
+        /// transmission, receiving, validation - runs for real against this. The
+        /// only thing it cannot tell us is whether the physical wiring matches
+        /// what we believe, which needs the actual wall.
+        /// </summary>
+        private readonly LoopbackTransport _loopback = new();
+
+        /// <summary>
+        /// Samples the clock 30 times a second and sends packets to whatever
+        /// transport is attached.
+        /// </summary>
+        private readonly WallOutputService _output;
 
         /// <summary>
         /// Every effect the app can play. Used to build the buttons.
         /// </summary>
         private readonly EffectCatalog _catalog = new();
+
+        /// <summary>
+        /// The window's own copy of the wall state.
+        ///
+        /// The clock copies into this on each redraw rather than handing over a
+        /// reference to its own frame. That matters because the clock's frame is
+        /// being rewritten by a different thread roughly 120 times a second - a
+        /// drawing routine reading it directly could paint the top half of one
+        /// frame and the bottom half of the next.
+        /// </summary>
+        private readonly WallFrame _displayFrame = new();
 
         /// <summary>
         /// Direct references to the 35 wall buttons, stored in row-major order
@@ -138,6 +187,9 @@ namespace LightWall.App
         /// <summary>Seconds elapsed since the rate readout was last updated.</summary>
         private double _secondsSinceRateUpdate;
 
+        /// <summary>Seconds elapsed since the output statistics were last updated.</summary>
+        private double _secondsSinceOutputStatsUpdate;
+
         /// <summary>
         /// Constructor for the main window.
         ///
@@ -146,12 +198,15 @@ namespace LightWall.App
         /// 2. build the 35 wall buttons
         /// 3. build the effect buttons from the catalog
         /// 4. copy the starting slider values into the engine
-        /// 5. draw the initial (blank) wall
-        /// 6. start the redraw timer
+        /// 5. start the show clock so the engine begins ticking
+        /// 6. attach the virtual wall so packets start flowing
+        /// 7. draw the initial wall and start the redraw loop
         /// </summary>
         public MainWindow()
         {
             InitializeComponent();
+
+            _output = new WallOutputService(_clock);
 
             BuildWallGrid();
             BuildEffectButtons();
@@ -160,9 +215,25 @@ namespace LightWall.App
             UpdateControlLabels();
             UpdateStatusText();
 
+            _clock.Start();
+
+            // Attach the virtual wall straight away, so the whole output
+            // pipeline is exercised from the moment the app opens. When real
+            // serial arrives it will be attached the same way, in place of this.
+            _output.Attach(_loopback);
+
             RenderWall();
+            UpdateOutputStatsText();
 
             StartRenderLoop();
+
+            // Shut the background threads down cleanly, and let the output
+            // service send its blackout packet, before the window goes away.
+            Closed += (_, _) =>
+            {
+                _output.Dispose();
+                _clock.Dispose();
+            };
         }
 
         /// <summary>
@@ -316,28 +387,32 @@ namespace LightWall.App
         }
 
         /// <summary>
-        /// Runs once per drawn frame: moves the engine forward and redraws.
+        /// Runs once per drawn frame: redraws the wall from the clock's state.
         ///
-        /// The engine is told how much real time actually passed rather than how
-        /// much was supposed to pass. If the computer stalls and a frame arrives
-        /// late, the animation advances by the correct amount and stays on pace
-        /// instead of drifting slowly behind.
+        /// Note what this no longer does. It does not advance the engine. The
+        /// show clock does that on its own thread, at its own rate, whether the
+        /// window is drawing or not.
+        ///
+        /// This method's only job now is to display. That separation is what
+        /// lets the wall be driven at 30 packets a second while the screen
+        /// refreshes at 60, and what stops a busy or stalled interface from
+        /// disturbing the wall's timing.
         /// </summary>
         private void OnRendering(object? sender, EventArgs e)
         {
             // Read the elapsed time and immediately restart the stopwatch, so
-            // the next tick measures from this moment.
+            // the next frame measures from this moment. Still needed, but only
+            // for the frame-rate readout now.
             double deltaSeconds = _frameClock.Elapsed.TotalSeconds;
             _frameClock.Restart();
 
-            _engine.Advance(deltaSeconds);
-
             RenderWall();
             UpdateFrameRateReadout(deltaSeconds);
+            UpdateOutputStatsPeriodically(deltaSeconds);
         }
 
         /// <summary>
-        /// Makes the on-screen wall match the engine's current frame.
+        /// Makes the on-screen wall match the clock's current frame.
         ///
         /// Only cells that actually changed are touched. Asking WPF to restyle a
         /// button causes it to redraw that button, so restyling all 35 every
@@ -346,7 +421,12 @@ namespace LightWall.App
         /// </summary>
         private void RenderWall()
         {
-            WallFrame frame = _engine.CurrentFrame;
+            // Take a private copy first. The clock's own frame is being
+            // rewritten by another thread while we work, so reading it directly
+            // could give us half of one frame and half of the next.
+            _clock.CopyCurrentFrameTo(_displayFrame);
+
+            WallFrame frame = _displayFrame;
             bool anythingChanged = false;
 
             for (int row = 0; row < WallFrame.Rows; row++)
@@ -416,20 +496,66 @@ namespace LightWall.App
         }
 
         /// <summary>
-        /// Shows the bytes that would be sent to the Arduino for the frame
-        /// currently on screen.
+        /// Shows the bytes being sent to the wall for the frame on screen.
         /// </summary>
         private void UpdateSerializedPacketPreview()
         {
-            WallFrame frame = _engine.CurrentFrame;
-
-            byte[] payload = WallFrameSerializer.SerializeFrameData(frame);
-            byte[] packet = WallFrameSerializer.CreateFramePacket(frame);
+            byte[] payload = WallFrameSerializer.SerializeFrameData(_displayFrame);
+            byte[] packet = WallFrameSerializer.CreateFramePacket(_displayFrame);
 
             SerializedPacketTextBox.Text =
                 $"Payload (5 bytes): {WallFrameSerializer.ToHexString(payload)}{Environment.NewLine}" +
                 $"Packet  (9 bytes): {WallFrameSerializer.ToHexString(packet)}{Environment.NewLine}" +
-                $"Bulbs lit: {frame.CountLitCells()} of {WallFrame.Rows * WallFrame.Columns}";
+                $"Bulbs lit: {_displayFrame.CountLitCells()} of {WallFrame.Rows * WallFrame.Columns}";
+        }
+
+        /// <summary>
+        /// Refreshes the output statistics every so often.
+        ///
+        /// Not on every drawn frame, because the numbers would change too fast
+        /// to read and rebuilding the text sixty times a second is wasteful.
+        /// </summary>
+        private void UpdateOutputStatsPeriodically(double deltaSeconds)
+        {
+            _secondsSinceOutputStatsUpdate += deltaSeconds;
+
+            if (_secondsSinceOutputStatsUpdate < OutputStatsUpdateIntervalSeconds)
+            {
+                return;
+            }
+
+            _secondsSinceOutputStatsUpdate = 0.0;
+
+            // Let the virtual wall's watchdog run even during a stretch when
+            // nothing is being sent, so that stopping output visibly blanks it
+            // after the timeout - exactly as the real wall would behave.
+            _loopback.UpdateWatchdog();
+
+            UpdateOutputStatsText();
+        }
+
+        /// <summary>
+        /// Writes the current state of the output pipeline into the readout.
+        ///
+        /// This is the window onto everything happening downstream of the
+        /// engine. Until real hardware is connected it is the main evidence
+        /// that the pipeline works: packets going out at the expected rate,
+        /// arriving intact, and being decoded into the wall we expect.
+        /// </summary>
+        private void UpdateOutputStatsText()
+        {
+            string transportName = _output.Transport?.Name ?? "not connected";
+
+            OutputStatusTextBlock.Text = $"Output: {transportName}";
+
+            OutputStatsTextBlock.Text =
+                $"Engine {_clock.MeasuredTicksPerSecond:F0} Hz   " +
+                $"Sending {_output.MeasuredPacketsPerSecond:F0} pkt/s   " +
+                $"Sent {_output.PacketsSent}{Environment.NewLine}" +
+                $"Virtual wall: {_loopback.ValidPacketsReceived} ok, " +
+                $"{_loopback.ChecksumFailures} bad checksum, " +
+                $"{_loopback.BytesDiscarded} bytes discarded" +
+                (_loopback.WatchdogTripped ? "   [WATCHDOG TRIPPED]" : string.Empty);
         }
 
         /// <summary>
@@ -437,19 +563,28 @@ namespace LightWall.App
         ///
         /// Called once at startup so the engine begins in step with whatever the
         /// sliders were left at in the layout file.
+        ///
+        /// Everything goes through _clock.Modify, which takes the lock before
+        /// touching the engine. The engine is being ticked by another thread, so
+        /// writing to it directly from here would be a race - two threads
+        /// changing the same values at the same time, producing bugs that appear
+        /// at random and cannot be reproduced on demand.
         /// </summary>
         private void ApplyControlsToEngine()
         {
-            // The slider reads as a percentage; the engine wants a multiplier,
-            // where 1.0 means normal speed. 150% becomes 1.5.
-            _engine.SpeedMultiplier = SpeedSlider.Value / 100.0;
+            _clock.Modify(engine =>
+            {
+                // The slider reads as a percentage; the engine wants a
+                // multiplier, where 1.0 means normal speed. 150% becomes 1.5.
+                engine.SpeedMultiplier = SpeedSlider.Value / 100.0;
 
-            // Center Y shifts up and down, which is a row offset.
-            // Center X shifts left and right, which is a column offset.
-            _engine.OffsetRows = (int)CenterYSlider.Value;
-            _engine.OffsetColumns = (int)CenterXSlider.Value;
+                // Center Y shifts up and down, which is a row offset.
+                // Center X shifts left and right, which is a column offset.
+                engine.OffsetRows = (int)CenterYSlider.Value;
+                engine.OffsetColumns = (int)CenterXSlider.Value;
 
-            _engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value;
+                engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value;
+            });
         }
 
         /// <summary>
@@ -469,7 +604,7 @@ namespace LightWall.App
         /// </summary>
         private void UpdateStatusText()
         {
-            IWallEffect? active = _engine.ActiveEffect;
+            IWallEffect? active = _clock.ActiveEffect;
 
             if (active is null)
             {
@@ -507,7 +642,7 @@ namespace LightWall.App
                 return;
             }
 
-            _engine.Play(effect);
+            _clock.Modify(engine => engine.Play(effect));
 
             UpdateStatusText();
             RenderWall();
@@ -518,7 +653,7 @@ namespace LightWall.App
         /// </summary>
         private void StopAnimationButton_Click(object sender, RoutedEventArgs e)
         {
-            _engine.Stop();
+            _clock.Modify(engine => engine.Stop());
             UpdateStatusText();
         }
 
@@ -536,7 +671,7 @@ namespace LightWall.App
                 return;
             }
 
-            _engine.ToggleCell(position.Row, position.Column);
+            _clock.Modify(engine => engine.ToggleCell(position.Row, position.Column));
 
             UpdateStatusText();
             RenderWall();
@@ -560,7 +695,7 @@ namespace LightWall.App
                 return;
             }
 
-            _engine.SpeedMultiplier = SpeedSlider.Value / 100.0;
+            _clock.Modify(engine => engine.SpeedMultiplier = SpeedSlider.Value / 100.0);
             UpdateControlLabels();
         }
 
@@ -583,8 +718,11 @@ namespace LightWall.App
                 return;
             }
 
-            _engine.OffsetRows = (int)CenterYSlider.Value;
-            _engine.OffsetColumns = (int)CenterXSlider.Value;
+            _clock.Modify(engine =>
+            {
+                engine.OffsetRows = (int)CenterYSlider.Value;
+                engine.OffsetColumns = (int)CenterXSlider.Value;
+            });
 
             UpdateControlLabels();
         }
@@ -602,7 +740,8 @@ namespace LightWall.App
                 return;
             }
 
-            _engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value;
+            _clock.Modify(engine =>
+                engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value);
             UpdateControlLabels();
         }
 

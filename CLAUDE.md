@@ -55,10 +55,10 @@ dotnet publish "desktop-app/LightWallController/LightWall.App" -p:PublishProfile
 
 | Project | Target | Purpose |
 |---|---|---|
-| `LightWall.Core` | `net10.0` | Wall model, effects, engine, packet format. No UI references. |
+| `LightWall.Core` | `net10.0` | Wall model, effects, engine, clock, transport, packet format, virtual wall. No UI references. |
 | `LightWall.App` | `net10.0-windows` | WPF simulator window. The only project that knows about WPF. |
-| `LightWall.IO` | `net10.0` | Serial and audio. **Currently empty** — this is the next layer. |
-| `LightWall.Tests` | `net10.0` | xUnit tests for Core. |
+| `LightWall.IO` | `net10.0` | Real hardware and system I/O — serial, audio. **Currently empty.** |
+| `LightWall.Tests` | `net10.0` | xUnit tests for Core. 115 of them. |
 
 Shared build settings live in
 `desktop-app/LightWallController/Directory.Build.props`.
@@ -72,9 +72,13 @@ These are load-bearing. Breaking them causes real problems later.
    make sense with no screen attached belongs in Core.
 
 2. **`WallEngine` is the single authority on what the wall shows.** The window
-   draws what the engine says; it does not decide anything itself. The serial
-   layer will read from the same engine. Do not reintroduce wall state into the
-   window.
+   draws what the engine says; it does not decide anything itself. Do not
+   reintroduce wall state into the window.
+
+   `WallShowClock` owns the engine and runs it on a background thread. Nothing
+   else touches the engine directly — go through `clock.Modify(...)` to change
+   it and `clock.CopyCurrentFrameTo(...)` to read it. Do not add locking inside
+   `WallEngine` itself; it is deliberately a simple single-threaded class.
 
 3. **Effects are driven by time, not frame count.** `EffectContext.TimeSeconds`
    is the input. This decouples animation pace from redraw rate, lets the screen
@@ -92,6 +96,34 @@ These are load-bearing. Breaking them causes real problems later.
 
 6. **Adding an effect means adding one entry to `EffectCatalog`.** The window
    builds its buttons from the catalog. Do not hard-code effect buttons in XAML.
+
+7. **Shared state crosses threads only as a copy, taken under a lock.** Two
+   background threads exist — the show clock and the output service. Neither
+   reaches into anything else's state. This is the pattern audio will use when
+   analysis arrives on a callback thread.
+
+8. **Output is rate-limited and never queued.** The wall is fed at 30 packets a
+   second regardless of how fast the engine ticks, and frames generated in
+   between are skipped rather than stored. Queueing would make the wall lag
+   further behind reality over time; dropping keeps it at worst one frame late.
+
+## The output pipeline
+
+```
+WallShowClock  --> MainWindow          (draws, ~60 Hz)
+               --> WallOutputService   (samples 30 Hz, builds packets)
+                        --> LoopbackTransport  (virtual wall, works today)
+                        --> SerialTransport    (not yet written)
+```
+
+`VirtualWallReceiver` is a software model of the firmware's receiving half. It is
+both the thing that makes hardware-free development possible and the reference
+the C++ firmware should be translated from — it is written byte-at-a-time with a
+fixed buffer and no allocation, deliberately in the shape an Arduino needs.
+
+`LoopbackTransport` can drop and corrupt bytes on purpose via
+`ByteDropProbability` and `ByteCorruptionProbability`. Use it when changing
+anything in the receive path.
 
 ## Serial protocol
 
@@ -143,7 +175,10 @@ trouble.
 
 Do not add these speculatively:
 
-- Serial transport (next up, goes in `LightWall.IO`)
+- Serial transport (goes in `LightWall.IO`, implementing `IWallTransport`). When
+  it is written it must handle the port-open reset: opening a serial connection
+  to a Mega toggles DTR and reboots the board, so roughly the first 1.5–2
+  seconds of anything sent is swallowed by the bootloader.
 - Arduino firmware (only a README exists so far)
 - Audio capture, analysis, beat detection
 - Per-effect parameter systems — `EffectParameters` is a single shared object on

@@ -58,6 +58,32 @@ off the bottom of the screen once the controls grew.
 - redraws via `CompositionTarget.Rendering` at ~60 fps
 - only changed cells are restyled; brushes are created once and frozen
 
+### Output pipeline
+
+The engine no longer runs on the window's redraw loop. `WallShowClock` ticks it
+on a background thread at around 120 Hz; the window draws from it at the
+monitor's rate; `WallOutputService` samples it 30 times a second and sends
+packets. Three independent rates, none constraining the others.
+
+Output is rate-limited to 30 packets a second, based on measured behaviour of the
+real installation. Frames generated between sends are skipped rather than queued,
+so the wall is at worst one frame behind reality rather than accumulating lag.
+Every frame is sent even when unchanged, which makes the stream self-healing and
+keeps the firmware watchdog fed. Detaching sends a blackout first.
+
+### Virtual wall
+
+`VirtualWallReceiver` is a software model of the Arduino's receiving logic: the
+byte-stream state machine, sync hunting, checksum validation, resynchronisation,
+and the watchdog. `LoopbackTransport` feeds packets into it, and can be told to
+drop or corrupt bytes on purpose to prove recovery works.
+
+The app attaches this at startup, so the entire pipeline runs for real from the
+moment it opens. The output readout in the window shows packets sent, packets
+accepted, checksum failures and discarded bytes.
+
+Measured on a normal run: 240 packets sent, 240 accepted, zero failures.
+
 ### Serialization layer
 
 Fixed 9-byte packets: two sync bytes, command, five payload bytes, checksum.
@@ -69,19 +95,28 @@ bulb count for the current frame.
 
 ### Tests
 
-80 tests covering the wall model, the exact byte layout of the protocol,
-round-trip packing, effect repeatability, and engine behaviour.
+115 tests covering the wall model, the exact byte layout of the protocol,
+round-trip packing, effect repeatability, engine behaviour, the receiver's
+stream handling under deliberately injected faults, and the output pipeline
+end to end.
 
 ## Not Yet Implemented
 
+### Virtual wall display
+
+The virtual wall exists and runs, but the interface only shows its statistics as
+text. Displaying its decoded frame as a second wall alongside the engine's is the
+next visible step.
+
 ### Serial communication
 
-Not started. `LightWall.IO` is an empty project.
+Not started. `LightWall.IO` is still an empty project.
 
-- COM port enumeration
-- connection service
-- packet transmission
-- connection state reporting
+The abstraction it plugs into is done: `SerialTransport` needs only to implement
+`IWallTransport`, and everything upstream already works. It will need the
+`System.IO.Ports` package, and it must handle the port-open reset — opening a
+serial connection to a Mega toggles DTR and reboots the board, so roughly the
+first 1.5 to 2 seconds of anything sent will be swallowed by the bootloader.
 
 ### Arduino firmware
 

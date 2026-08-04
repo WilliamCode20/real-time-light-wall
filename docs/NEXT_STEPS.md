@@ -16,64 +16,88 @@ The refactor that was flagged as "the next architecture layer" is done:
 - two-column layout so the wall is actually visible
 - self-contained publish profile for handing the app to a non-developer
 
+## Also Completed
+
+The output pipeline, and the virtual wall it feeds:
+
+- `VirtualWallReceiver` — software model of the firmware's receiving logic, with
+  fault-injection tests
+- `WallShowClock` — engine moved onto its own background thread, so the wall's
+  timing no longer depends on the window
+- `IWallTransport` + `LoopbackTransport` — transport abstraction with a virtual
+  wall behind it, able to drop and corrupt bytes on purpose
+- `WallOutputService` — rate-limited to 30 packets a second, latest-frame-wins,
+  blackout on detach
+- 115 tests
+
 ## Current Priority
 
-Serial transport. Everything needed for it now exists on the app side.
+### 1. Show the virtual wall in the interface
 
-### 1. Serial service in `LightWall.IO`
+The pipeline runs but is only visible as a line of statistics. Draw the decoded
+frame as a second wall beside the engine's.
 
-Build a service that can:
+When the two match while sliders are being dragged, the whole chain is proven
+except the physical layer. Turning up the fault-injection probability and
+watching it recover makes the error handling visible too.
+
+### 2. Serial transport in `LightWall.IO`
+
+Implement `IWallTransport` over a real port. Everything upstream already works,
+so this is the only new code needed.
 
 - enumerate COM ports
 - connect and disconnect
 - send a packet
 - report connection state
 
-Two design points already settled:
+Needs the `System.IO.Ports` package.
 
-- **Latest-frame-wins, never a queue.** One slot holding the newest frame,
-  overwritten by each update, drained by the writer. A backlog would mean the
-  wall lags reality and drifts further behind over time.
-- **Rate-limited independently of the simulator.** The screen runs at 60 fps; the
-  wall should be driven at around 30, sampling from the same engine. See
-  HARDWARE_NOTES.md for the measured evidence behind that figure.
+**Handle the port-open reset.** Opening a serial connection to a Mega toggles the
+DTR line, which reboots the board. For roughly the first 1.5 to 2 seconds
+afterwards the bootloader is running and will swallow anything sent. Wait before
+starting to talk.
 
-Keep `SerialPort.Write` off the UI thread so a USB hiccup stalls the writer
-rather than freezing the window.
+`SerialPort.Write` is already off the UI thread — the output service has its own.
 
-### 2. A minimal hardware test path in the UI
+### 3. A minimal hardware test path in the UI
 
 Added conservatively, not as a UI overhaul:
 
-- choose COM port
+- choose transport: virtual wall or a COM port
 - connect / disconnect
 - send the current frame once
-- toggle live-send during playback
 
-### 3. Arduino firmware
+### 4. Arduino firmware
 
-Use `WallFrameSerializer` as the reference — `DeserializeFrameData` and
-`TryParsePacket` exist specifically so the firmware has known-correct logic to
-translate from.
+Translate `VirtualWallReceiver` into C++. It was written specifically for this:
+byte at a time, tiny fixed buffer, no allocation — the same shape an Arduino
+needs. Its tests already prove the logic, so this is a translation rather than a
+fresh design.
 
-The receive loop should:
+Two details the tests pinned down and the firmware must reproduce:
 
-- wait for `0xAA` followed immediately by `0x55`
-- collect the remaining 7 bytes
-- verify the checksum, and resynchronise if it fails
-- act on the command
-- unpack the payload and drive the mapped pins
+- On seeing a second `0xAA` while waiting for `0x55`, **stay put**. Restarting
+  the hunt eats the real sync byte of an `AA AA 55 ...` sequence and silently
+  loses a frame.
+- A lone `0xAA` is not proof a packet is starting. It is an ordinary bulb pattern
+  that appears in payloads regularly, which is why the checksum still matters.
 
-Note that a lone `0xAA` is not proof a packet is starting; it is an ordinary bulb
-pattern that appears in payloads regularly.
-
-**Include a watchdog.** If no valid packet arrives for a set period, the firmware
-should take a defined action on its own. For something switching mains, "the app
+**Include the watchdog.** If no valid packet arrives for a set period, the
+firmware blanks the wall by itself. For something switching mains, "the app
 crashed and the wall froze mid-frame" should be a designed behaviour rather than
-an accident. Blanking is the safe default. That is what the heartbeat command is
-for.
+an accident.
 
-### 4. Validate end-to-end
+### 5. Bulb identification mode
+
+Walk bulbs 0 to 34 one at a time with an on-screen readout of which index is lit.
+Build this before going out to the wall — it turns the mapping check into a few
+minutes of confirming rather than an afternoon of guessing in the heat.
+
+This is the one thing no amount of virtual work can settle: whether bulb 0 really
+is the top-left one, and whether the wall is mirrored or rotated.
+
+### 6. Validate end-to-end
 
 - static frames
 - mapping correctness (is bulb 0 really top-left?)
@@ -83,17 +107,21 @@ for.
 
 ## After Serial Transport Works
 
-### 5. Audio capture only
+### 7. Audio capture only
 
 Do not jump straight to reactive logic. First add Windows system audio capture
 (WASAPI loopback, most easily via NAudio) plus basic level meters for debugging.
 
-### 6. Audio feature extraction
+The threading pattern is already established: analysis will arrive on an audio
+callback thread and hand features to the engine the same way the window hands it
+slider changes — through the clock, under a lock, never by reaching in.
+
+### 8. Audio feature extraction
 
 Overall level, bass/mid/treble energy, smoothing, onset detection, then beat
 confidence and BPM estimation.
 
-### 7. Map audio features to visuals
+### 9. Map audio features to visuals
 
 Only once the layers above work. `EffectContext` is the place audio features
 would arrive, so effects can read them the same way they read time today.
@@ -107,9 +135,12 @@ Not urgent, worth knowing:
   effects have their own controls.
 - The Center X/Y offsets clip rather than wrap. A wrap mode might be worth adding
   as an option.
-- `WallEngine` is not thread-safe. That becomes relevant when the serial layer
-  wants frames from a background thread; the simplest fix then is to hand that
-  thread a copy of the finished frame rather than let it reach into the engine.
+- `WallEngine` itself is still single-threaded and unaware of threads. That is
+  deliberate — `WallShowClock` owns it and is the only thing allowed to touch it.
+  Do not add locking inside the engine; go through the clock.
+- There is no interface control for detaching output or adjusting fault
+  injection. Both are settable in code and worth exposing alongside the virtual
+  wall display.
 
 ## Near-Term Guardrails
 
