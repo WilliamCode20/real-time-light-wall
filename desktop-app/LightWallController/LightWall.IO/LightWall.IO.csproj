@@ -1,9 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LightWall.IO
+
+    Reserved for talking to the outside world:
+    - serial communication with the Arduino
+    - Windows system audio capture
+
+    Currently empty. This is the next layer to be built.
+
+    Shared settings (ImplicitUsings, Nullable) come from Directory.Build.props
+    in the parent folder.
+  -->
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>

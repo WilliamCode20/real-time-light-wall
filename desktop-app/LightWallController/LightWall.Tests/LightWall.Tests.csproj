@@ -1,9 +1,29 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LightWall.Tests
+
+    Automated tests for LightWall.Core.
+
+    Why tests matter for this project specifically:
+    Soon the app will be sending data down a wire to a physical wall. When
+    something looks wrong on the wall, the first question is always
+    "is the app wrong, or is the wiring wrong?"
+
+    These tests answer the first half of that question instantly, so debugging
+    can focus on the hardware.
+
+    Run them with:
+      dotnet test
+
+    Shared settings (ImplicitUsings, Nullable) come from Directory.Build.props
+    in the parent folder.
+  -->
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+
+    <!-- This project is a test harness, never something we ship or package. -->
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -20,6 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Makes "Xunit" available in every test file without an explicit using. -->
     <Using Include="Xunit" />
   </ItemGroup>
 

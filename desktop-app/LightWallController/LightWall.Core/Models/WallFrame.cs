@@ -199,28 +199,118 @@ namespace LightWall.Core.Models
         public WallFrame CreateTranslated(int rowOffset, int columnOffset)
         {
             var translated = new WallFrame();
+            translated.CopyTranslatedFrom(this, rowOffset, columnOffset);
+            return translated;
+        }
+
+        /// <summary>
+        /// Fills this frame with a shifted copy of another frame.
+        ///
+        /// This does the same job as CreateTranslated, with one difference: it
+        /// writes into a frame that already exists rather than making a new one.
+        ///
+        /// WHY BOTH VERSIONS EXIST
+        ///
+        /// CreateTranslated is the friendlier one to read and is fine for
+        /// occasional use. But the engine calls this on every single frame, up
+        /// to 60 times a second, forever.
+        ///
+        /// Creating a brand new object that often gives the .NET garbage
+        /// collector a steady stream of rubbish to clean up. It copes fine, but
+        /// the cleanup can pause the program briefly at unpredictable moments -
+        /// which shows up as a small stutter in an animation.
+        ///
+        /// Reusing one frame over and over avoids making the rubbish in the
+        /// first place.
+        /// </summary>
+        public void CopyTranslatedFrom(WallFrame source, int rowOffset, int columnOffset)
+        {
+            if (source is null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            // Start blank, because cells that get shifted off the edge should
+            // leave darkness behind rather than whatever was there before.
+            SetAll(false);
 
             for (int row = 0; row < Rows; row++)
             {
                 for (int column = 0; column < Columns; column++)
                 {
-                    if (!_cells[row, column])
+                    if (!source.GetCell(row, column))
                     {
                         continue;
                     }
 
-                    int translatedRow = row + rowOffset;
-                    int translatedColumn = column + columnOffset;
+                    int shiftedRow = row + rowOffset;
+                    int shiftedColumn = column + columnOffset;
 
-                    if (translatedRow >= 0 && translatedRow < Rows &&
-                        translatedColumn >= 0 && translatedColumn < Columns)
+                    // Anything pushed outside the wall is simply dropped.
+                    // The wall does not wrap around; content shifted off the
+                    // right-hand edge does not reappear on the left.
+                    if (shiftedRow >= 0 && shiftedRow < Rows &&
+                        shiftedColumn >= 0 && shiftedColumn < Columns)
                     {
-                        translated.SetCell(translatedRow, translatedColumn, true);
+                        _cells[shiftedRow, shiftedColumn] = true;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reports whether this frame shows exactly the same picture as another.
+        ///
+        /// Mostly used by tests, which frequently need to ask "did this produce
+        /// the arrangement I expected?".
+        ///
+        /// It is also handy for skipping work: if a newly generated frame is
+        /// identical to what is already on screen, there is nothing to redraw
+        /// and nothing worth sending to the hardware.
+        /// </summary>
+        public bool ContentEquals(WallFrame other)
+        {
+            if (other is null)
+            {
+                throw new ArgumentNullException(nameof(other));
+            }
+
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int column = 0; column < Columns; column++)
+                {
+                    if (_cells[row, column] != other.GetCell(row, column))
+                    {
+                        return false;
                     }
                 }
             }
 
-            return translated;
+            return true;
+        }
+
+        /// <summary>
+        /// Counts how many bulbs are currently ON, from 0 to 35.
+        ///
+        /// Useful in tests, and useful later as a rough stand-in for how much
+        /// electrical load the wall is drawing at this instant.
+        /// </summary>
+        public int CountLitCells()
+        {
+            int count = 0;
+
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int column = 0; column < Columns; column++)
+                {
+                    if (_cells[row, column])
+                    {
+                        count++;
+                    }
+                }
+            }
+
+            return count;
         }
 
         /// <summary>

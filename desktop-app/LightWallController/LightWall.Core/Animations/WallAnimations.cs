@@ -16,10 +16,17 @@ namespace LightWall.Core.Animations
     /// These methods do not run timers themselves.
     /// They just return lists of WallFrame objects.
     ///
-    /// The UI layer (MainWindow) is responsible for:
-    /// - taking those frames
-    /// - stepping through them over time
-    /// - rendering them on the simulator
+    /// WHO PLAYS THESE BACK
+    ///
+    /// FrameSequenceEffect does. It takes one of these lists plus a playback
+    /// rate and works out which frame belongs to the current moment.
+    ///
+    /// Keeping "what the frames are" separate from "how fast to play them"
+    /// means the same sequence could be reused at a different speed, or driven
+    /// by the beat of a song later on, without touching the code below.
+    ///
+    /// These lists are built once when the EffectCatalog is created and then
+    /// reused, so the loops below run at startup rather than on every press.
     /// </summary>
     public static class WallAnimations
     {

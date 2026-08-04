@@ -1,10 +1,23 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LightWall.App
+
+    The WPF desktop application: the simulator window the user actually sees.
+
+    This is the only project that targets "net10.0-windows" and the only one
+    allowed to know about WPF. All the real logic lives in LightWall.Core.
+
+    Shared settings (ImplicitUsings, Nullable) come from Directory.Build.props
+    in the parent folder.
+
+    To build a single .exe you can hand to someone else, see:
+      Properties/PublishProfiles/SelfContained.pubxml
+  -->
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 

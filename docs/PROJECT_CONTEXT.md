@@ -31,15 +31,18 @@ The wall should feel more like an architectural lighting feature than a gimmick.
 
 The project is being built in stages.
 
-The current stage focuses on:
+The simulator stage is complete: wall-state modeling, a time-driven effect
+engine, 15 effects, live animation controls, and a tested serial packet format.
 
-- the desktop simulator
-- wall-state modeling
-- static patterns
-- preset animations
-- procedural animations
-- animation controls
-- frame serialization
+The current stage is serial transport — getting frames out of the app and onto
+the physical wall. Audio comes after that.
+
+## Distribution
+
+The finished app is meant to be sent to a DJ or venue operator as a single file
+they download and run, with no installation steps. It publishes as a
+self-contained single .exe with the .NET runtime bundled inside, so the recipient
+does not need to install anything first.
 
 The simulator is not temporary. It is intended to remain part of the tool as:
 

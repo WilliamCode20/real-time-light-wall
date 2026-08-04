@@ -1,0 +1,47 @@
+<Project>
+
+  <!--
+    Directory.Build.props
+
+    MSBuild automatically reads this file and applies its settings to EVERY
+    project in this folder and below (LightWall.App, LightWall.Core,
+    LightWall.IO, LightWall.Tests).
+
+    Why this file exists:
+    Before, each .csproj repeated the same three settings. If we ever wanted to
+    change one, we had to remember to change it in four places. Now there is one
+    place to edit.
+
+    Note that TargetFramework is NOT set here. That is deliberate:
+    LightWall.App must target "net10.0-windows" because it uses WPF, while the
+    other projects target plain "net10.0" so they stay portable and testable.
+    Because that value genuinely differs per project, each .csproj still sets it.
+  -->
+
+  <PropertyGroup>
+    <!--
+      Lets us write "var x = new List<int>();" without a "using System.Collections.Generic;"
+      line at the top of every file. The compiler adds the most common usings for us.
+    -->
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      Turns on the compiler's null-safety checks.
+
+      With this on, the compiler warns us when a value could be null but we treat
+      it as though it definitely is not. This catches a very common category of
+      crash ("NullReferenceException") before the program ever runs.
+
+      A type written as "WallFrame" means "never null".
+      A type written as "WallFrame?" means "might be null, check before using".
+    -->
+    <Nullable>enable</Nullable>
+
+    <!--
+      Treat compiler warnings as information, not as build failures.
+      Kept explicit so the behavior is obvious rather than assumed.
+    -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

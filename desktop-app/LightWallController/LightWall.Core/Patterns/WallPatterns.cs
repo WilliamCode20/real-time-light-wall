@@ -11,15 +11,19 @@ namespace LightWall.Core.Patterns
     /// These methods do not create animation timing.
     /// They simply fill a WallFrame with a particular static arrangement.
     ///
-    /// This class exists to keep pattern logic OUT of the UI code.
+    /// This class exists to keep pattern logic out of the user interface.
     /// That is an important design decision.
     ///
-    /// MainWindow should mostly be responsible for:
-    /// - responding to button clicks
-    /// - starting/stopping animations
-    /// - rendering the simulator
+    /// WHERE THIS FITS
     ///
-    /// Pattern generation belongs here instead.
+    /// These are drawing routines, not effects. They know how to paint an
+    /// arrangement but nothing about time, playback or selection.
+    ///
+    /// EffectCatalog wraps each of them in a StaticPatternEffect, which is what
+    /// gives them a name, a description, and a place in the interface. The
+    /// division is deliberate: the same routine can be reused by several
+    /// effects. WallAnimations calls ApplyBorder and ApplyCross to build the
+    /// Border Pulse sequence, for instance.
     /// </summary>
     public static class WallPatterns
     {

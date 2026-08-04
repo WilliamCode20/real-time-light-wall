@@ -2,111 +2,106 @@
 
 ## Working Right Now
 
-The desktop WPF simulator currently works and includes:
+The desktop WPF simulator runs, and the solution builds clean with 80 passing
+tests.
 
 ### Core wall model
 
 - `WallFrame` stores the 5x7 ON/OFF wall state
-- supports cell, row, column, all-on/all-off operations
-- supports copying and translated frame generation
+- cell, row, column, all-on/all-off operations
+- copying, translated copies, content comparison, lit-cell count
 
-### Static patterns
+### Effect system
 
-Current static pattern support includes:
+All visuals implement a single `IWallEffect` interface and are driven by elapsed
+time rather than by a frame counter. Effects are repeatable: the same moment
+always produces the same picture.
 
-- Clear
-- Fill
-- Randomize
-- Row 3
-- Column 4
-- Checkerboard
-- Border
-- Cross
-- Sparkle
+**Static patterns (9):** Clear, Fill, Randomize, Row 3, Column 4, Checkerboard,
+Border, Cross, Sparkle
 
-### Pre-set animations
+**Frame-sequence animations (3):** Row Sweep, Border Pulse, Spiral
 
-Current frame-list animations include:
+**Procedural animations (3):** Meteor, Sparkle Storm, EQ Bumper
 
-- Row Sweep
-- Border Pulse
-- Spiral In/Out
+All 15 are registered in `EffectCatalog`, and the window builds its buttons from
+that list. Adding an effect is a one-entry change.
 
-### Procedural animations
+### Playback engine
 
-Current procedural animations include:
-
-- Meteor
-- Sparkle Storm
-- EQ Bumper
+`WallEngine` owns wall state and playback. Two modes: playing an effect, or
+manual mode where the user's clicked pattern is left alone. Speed is applied by
+scaling how fast effect time accumulates, so it can be changed mid-animation
+without a jump. Oversized time steps are capped so debugger pauses do not make
+animations leap.
 
 ### Animation controls
 
-Current controls include:
+- Speed (10%–300%)
+- Center X (-3 to +3)
+- Center Y (-2 to +2)
+- Meteor Tail Length (1–5)
 
-- Speed
-- Center X
-- Center Y
-- Meteor Tail Length
+All apply live, mid-animation. The Center offsets now affect static patterns as
+well as animations, which was previously inconsistent.
 
-### UI improvements already implemented
+### Simulator UI
 
-The simulator UI currently includes labeled sections:
+Two-column layout: controls on the left in a scrollable panel, the wall on the
+right at a fixed 7:5 aspect. The previous single-column layout pushed the wall
+off the bottom of the screen once the controls grew.
 
-- Static Patterns
-- Pre-Set Animations
-- Procedural Animations
-- Animation Controls
+- effect buttons generated from the catalog, with descriptions as tooltips
+- the active effect's button is highlighted
+- status line shows what is playing and what it does
+- live frame-rate readout
+- redraws via `CompositionTarget.Rendering` at ~60 fps
+- only changed cells are restyled; brushes are created once and frozen
 
 ### Serialization layer
 
-A serializer now exists that converts a `WallFrame` into:
+Fixed 9-byte packets: two sync bytes, command, five payload bytes, checksum.
+Commands defined for frame update, blackout and heartbeat. Packing, unpacking
+and validation are all implemented and tested.
 
-- a 5-byte packed wall payload
-- an 8-byte packet with:
-  - start byte
-  - command byte
-  - payload
-  - checksum
+A packet preview in the window shows the payload, the full packet and the lit
+bulb count for the current frame.
 
-A packet preview is displayed in the simulator UI for debugging.
+### Tests
+
+80 tests covering the wall model, the exact byte layout of the protocol,
+round-trip packing, effect repeatability, and engine behaviour.
 
 ## Not Yet Implemented
 
-These layers are not yet built:
+### Serial communication
 
-### Serial communication from desktop app
+Not started. `LightWall.IO` is an empty project.
 
-Not yet implemented:
+- COM port enumeration
+- connection service
+- packet transmission
+- connection state reporting
 
-- COM port selection
-- serial connection service
-- packet transmission to Arduino from the app
+### Arduino firmware
 
-### Arduino firmware integration with app protocol
-
-The protocol design exists conceptually, but desktop-to-Arduino live communication has not yet been wired up and tested end-to-end.
+Only a README exists. The protocol is specified and has a reference
+implementation in C# to translate from, but no firmware has been written and
+nothing has been tested against real hardware.
 
 ### Audio system
 
-Not yet implemented:
+Not started.
 
 - Windows system audio capture
-- waveform monitoring
-- bass/mid/treble analysis
-- onset detection
-- BPM estimation
+- level and frequency-band analysis
+- onset detection, BPM estimation
 - music-to-animation mapping
 
 ## Current Development State
 
-The project is still in the simulator-first phase, but it has moved beyond a toy prototype.
+The project has a real visual engine, a tested protocol, reusable effect logic,
+and a clean separation between logic and interface.
 
-The app now has:
-
-- a real visual engine
-- parameterized controls
-- reusable pattern/animation logic
-- a first transport-oriented serialization layer
-
-This is the stage immediately before serial transport and later audio integration.
+The layer that logically comes next is serial transport, followed by firmware,
+followed by audio.

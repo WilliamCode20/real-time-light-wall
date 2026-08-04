@@ -1,92 +1,119 @@
 # Next Steps
 
+## Completed Since the Last Handoff
+
+The refactor that was flagged as "the next architecture layer" is done:
+
+- all visuals unified behind a single `IWallEffect` interface
+- effects driven by elapsed time rather than a frame counter
+- playback and wall state moved out of `MainWindow` into `WallEngine`
+- `EffectCatalog` added; the window builds its buttons from it
+- protocol hardened: two sync bytes, command enum, blackout and heartbeat,
+  unpacking and validation
+- 80 tests added
+- rendering performance fixed (frozen brushes, change detection, proper render
+  loop)
+- two-column layout so the wall is actually visible
+- self-contained publish profile for handing the app to a non-developer
+
 ## Current Priority
 
-The next major priority is to move from simulator-only output to real transport/output plumbing.
+Serial transport. Everything needed for it now exists on the app side.
 
-That means the next development phase should focus on serial transport before beginning full audio integration.
+### 1. Serial service in `LightWall.IO`
 
-## Recommended Immediate Next Steps
-
-### 1. Add serial communication on the desktop side
-
-Build a serial service that can:
+Build a service that can:
 
 - enumerate COM ports
-- connect/disconnect to the Arduino
-- send the current 8-byte frame packet
+- connect and disconnect
+- send a packet
 - report connection state
 
-Suggested project location:
+Two design points already settled:
 
-- `LightWall.IO`
+- **Latest-frame-wins, never a queue.** One slot holding the newest frame,
+  overwritten by each update, drained by the writer. A backlog would mean the
+  wall lags reality and drifts further behind over time.
+- **Rate-limited independently of the simulator.** The screen runs at 60 fps; the
+  wall should be driven at around 30, sampling from the same engine. See
+  HARDWARE_NOTES.md for the measured evidence behind that figure.
 
-### 2. Add a simple serial test path in the app UI
+Keep `SerialPort.Write` off the UI thread so a USB hiccup stalls the writer
+rather than freezing the window.
 
-The app should eventually expose a minimal hardware test flow:
+### 2. A minimal hardware test path in the UI
+
+Added conservatively, not as a UI overhaul:
 
 - choose COM port
-- connect
-- send current frame
-- optionally enable live-send mode during animation playback
+- connect / disconnect
+- send the current frame once
+- toggle live-send during playback
 
-This should be added conservatively, not as a giant UI overhaul.
+### 3. Arduino firmware
 
-### 3. Implement Arduino packet receive/apply logic
+Use `WallFrameSerializer` as the reference — `DeserializeFrameData` and
+`TryParsePacket` exist specifically so the firmware has known-correct logic to
+translate from.
 
-Use the current packet design to:
+The receive loop should:
 
-- wait for start byte
-- validate command
-- validate checksum
-- unpack the 5-byte payload
-- apply each bit to the mapped wall pins
+- wait for `0xAA` followed immediately by `0x55`
+- collect the remaining 7 bytes
+- verify the checksum, and resynchronise if it fails
+- act on the command
+- unpack the payload and drive the mapped pins
 
-### 4. Validate end-to-end hardware output
+Note that a lone `0xAA` is not proof a packet is starting; it is an ordinary bulb
+pattern that appears in payloads regularly.
 
-Once serial exists, test:
+**Include a watchdog.** If no valid packet arrives for a set period, the firmware
+should take a defined action on its own. For something switching mains, "the app
+crashed and the wall froze mid-frame" should be a designed behaviour rather than
+an accident. Blanking is the safe default. That is what the heartbeat command is
+for.
+
+### 4. Validate end-to-end
 
 - static frames
+- mapping correctness (is bulb 0 really top-left?)
 - simple animations
-- mapping correctness
-- update stability
-- timing behavior
+- update stability over a sustained period
+- confirm the practical maximum frame rate on real hardware
 
 ## After Serial Transport Works
 
-### 5. Add audio capture only
+### 5. Audio capture only
 
-Do not jump straight to full reactive logic.
+Do not jump straight to reactive logic. First add Windows system audio capture
+(WASAPI loopback, most easily via NAudio) plus basic level meters for debugging.
 
-First add:
+### 6. Audio feature extraction
 
-- system audio capture on Windows
-- basic visualization / debugging
-- maybe level meters and simple bands
+Overall level, bass/mid/treble energy, smoothing, onset detection, then beat
+confidence and BPM estimation.
 
-### 6. Add audio feature extraction
+### 7. Map audio features to visuals
 
-After audio capture works, add:
+Only once the layers above work. `EffectContext` is the place audio features
+would arrive, so effects can read them the same way they read time today.
 
-- overall level
-- bass / mid / treble energy
-- smoothing
-- onset/transient detection
-- eventual beat confidence / BPM estimation
+## Known Smaller Items
 
-### 7. Map audio features to visual parameters
+Not urgent, worth knowing:
 
-Only after the above layers work should audio begin driving:
-
-- animation speed
-- density
-- pattern selection
-- scene changes
-- accent behaviors
+- `EffectParameters` is one shared object holding effect-specific settings. Fine
+  at one setting; wants to become a per-effect parameter system once several
+  effects have their own controls.
+- The Center X/Y offsets clip rather than wrap. A wrap mode might be worth adding
+  as an option.
+- `WallEngine` is not thread-safe. That becomes relevant when the serial layer
+  wants frames from a background thread; the simplest fix then is to hand that
+  thread a copy of the finished frame rather than let it reach into the engine.
 
 ## Near-Term Guardrails
 
-Avoid doing all of these at once:
+Avoid doing several of these at once:
 
 - serial
 - audio
@@ -98,20 +125,20 @@ Preferred pattern:
 - one focused layer at a time
 - keep the simulator working
 - keep commits small
-- keep architecture understandable
-
-## Good First Prompt for a New Claude Code Session
-
-A useful first Claude Code prompt would be:
-
-"Read the docs in the docs/ folder first, then inspect the codebase and summarize the current architecture, implemented features, and next best step. Do not edit anything yet."
+- run `dotnet test` before committing
 
 ## Notes for Future Agent Sessions
 
-Any new agent should preserve these truths:
+Read `CLAUDE.md` at the repository root first — it carries the build commands,
+the protocol specification and the architectural rules.
 
-- simulator remains important
-- `WallFrame` remains the source of truth
-- serialization format should stay consistent unless intentionally revised
-- desktop app is the main intelligence layer
-- Arduino is primarily an output target
+Preserve these truths:
+
+- the simulator remains important
+- `WallFrame` remains the source of truth for a wall state
+- `WallEngine` remains the authority on what is currently displayed
+- effects stay time-driven and repeatable
+- the serialization format stays consistent unless intentionally revised, and
+  `PacketCommand` values are permanent once firmware ships
+- the desktop app is the main intelligence layer; the Arduino is an output target
+- comments are part of the deliverable in this repository

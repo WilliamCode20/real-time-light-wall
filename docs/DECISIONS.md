@@ -86,20 +86,87 @@ Reason:
 
 Current chosen frame protocol:
 
-- row-major wall mapping
+- row-major wall mapping, bulb `N` = `row * 7 + column`
+- bits packed least-significant-bit first
 - 35 cells packed into 5 bytes
-- full packet = 8 bytes:
-  - start byte
+- full packet = 9 bytes:
+  - sync byte 1 (`0xAA`)
+  - sync byte 2 (`0x55`)
   - command byte
   - 5 payload bytes
-  - checksum
+  - checksum (XOR of command and payload)
 
 Reason:
 
 - compact
 - easy to debug
 - easy for Arduino to unpack
+- fixed length keeps the firmware's receive logic simple
 - future-friendly for additional command types
+
+Revised from an earlier 8-byte design that used a single `0xAA` start byte. The
+problem is that `0xAA` is an ordinary bulb pattern that turns up in payloads
+regularly — Sparkle Storm produces one every couple of seconds. A receiver that
+had lost its place could latch onto a payload byte and stay misaligned. Two sync
+bytes make that far less likely for the cost of one byte. The checksum still
+matters, because it reduces the risk rather than eliminating it.
+
+### 9. Effects are a single interface, driven by time
+
+Every visual — static pattern, frame sequence, or procedural animation —
+implements `IWallEffect` and is asked what the wall looks like at a moment in
+time, rather than at a step number.
+
+Reason:
+
+- three different shapes meant anything working with "whatever is playing" needed
+  three special cases; that is manageable at 15 effects and a roadblock at 40
+- animation pace becomes independent of redraw rate
+- the simulator and the physical wall can run at different rates and still agree,
+  which is necessary because relays cannot switch as fast as a screen refreshes
+- beats happen at points in time, so music sync is only possible against time
+
+A consequence worth preserving: effects must be repeatable, so the same time
+always gives the same frame. Random effects derive their generator from the step
+number rather than sharing one. Without that they flicker, because the screen
+redraws far more often than they change.
+
+### 10. Wall state lives in `WallEngine`, not in the window
+
+Playback, wall state, speed and offsets moved out of `MainWindow` into a class in
+`LightWall.Core`.
+
+Reason:
+
+- three things need to know what the wall should look like — the simulator, the
+  serial layer, and the tests — and only one of them is a window
+- logic inside a window can only ever be used by that window
+- it made the engine testable, which is where most of the 80 tests came from
+
+### 11. Effects are registered in a catalog
+
+`EffectCatalog` is the single list of available effects. The window builds its
+buttons from it.
+
+Reason:
+
+- adding an effect is a one-entry change instead of edits in three files
+- a DJ picking scenes from a menu needs a list of scenes to pick from
+- a future audio system choosing effects needs the same list
+
+### 12. The app will ship as a self-contained single .exe
+
+Publishing uses a profile that bundles the .NET runtime into one file.
+
+Reason:
+
+- the app is meant to be sent to a DJ or venue operator who just runs it
+- the alternative is talking a non-technical user through installing the .NET
+  Desktop Runtime first
+- the cost is file size (roughly 70 MB compressed), which is a good trade
+
+The settings live in a publish profile rather than the `.csproj` so that ordinary
+debug builds do not also copy the entire runtime into their output folder.
 
 ### 9. Build safety / workflow
 

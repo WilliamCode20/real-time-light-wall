@@ -1,14 +1,14 @@
-﻿<Window x:Class="LightWall.App.MainWindow"
+<Window x:Class="LightWall.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Light Wall Simulator"
-        Height="780"
-        Width="1020"
-        MinHeight="800"
-        MinWidth="820"
+        Height="820"
+        Width="1240"
+        MinHeight="600"
+        MinWidth="900"
         Background="#1E1E1E">
 
     <!--
@@ -18,377 +18,348 @@
         It does NOT contain the real logic of the app.
         The logic lives in MainWindow.xaml.cs.
 
-        Beginner mental model:
-        - XAML = what the UI looks like
+        Mental model:
+        - XAML     = what the UI looks like
         - .xaml.cs = what the UI does
+
+        WHY THE LAYOUT IS TWO COLUMNS
+
+        Everything used to be stacked vertically, with the wall at the bottom.
+        The controls grew tall enough that the wall was pushed off the bottom of
+        the screen entirely at any sensible window height.
+
+        Controls on the left and the wall on the right fixes that, and is a
+        better use of the space anyway: a widescreen monitor has horizontal room
+        to spare and very little vertical room. It also gives the wall the
+        prominence it should have, since it is the thing being looked at.
+
+        WHY THERE ARE ALMOST NO BUTTONS WRITTEN HERE
+
+        The effect buttons used to be listed out one by one in this file, which
+        meant adding an effect required editing three places.
+
+        The three WrapPanels below are left empty on purpose and filled in by the
+        code-behind, which asks EffectCatalog what effects exist and makes a
+        button for each. Adding an effect to the catalog makes it appear here
+        automatically.
     -->
 
     <Grid Margin="24">
+        <Grid.ColumnDefinitions>
+            <!-- Left: all the controls, in a scrollable panel. -->
+            <ColumnDefinition Width="540"/>
+            <!-- Right: the wall itself, taking whatever space is left. -->
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
         <!--
-            Main layout grid for the whole window.
-
-            We split the window into 5 stacked rows:
-            Row 0 = title / descriptive text
-            Row 1 = static pattern controls
-            Row 2 = animation control buttons
-            Row 3 = speed control + animation status
-            Row 4 = the actual 5x7 wall simulator
+            The controls sit inside a ScrollViewer so that shrinking the window
+            makes them scroll rather than getting cut off and becoming
+            unreachable.
         -->
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Column="0"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Margin="0,0,24,0">
+            <StackPanel>
 
-        <!-- Header area -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <!-- Main app title -->
-            <TextBlock Text="Light Wall Simulator"
-                       FontSize="28"
-                       FontWeight="Bold"
-                       Foreground="White"/>
-
-            <!-- Helpful subtitle for the current prototype -->
-            <TextBlock Text="Click cells to toggle bulbs, test static patterns, or run animated and procedural effects."
-                       FontSize="14"
-                       Foreground="#CCCCCC"
-                       Margin="0,6,0,0"/>
-        </StackPanel>
-
-        <!-- Static patterns section -->
-        <StackPanel Grid.Row="1" Margin="0,0,0,12">
-            <TextBlock Text="Static Patterns"
-                       FontSize="16"
-                       FontWeight="Bold"
-                       Foreground="White"
-                       Margin="0,0,0,10"/>
-
-            <WrapPanel>
-                <Button Content="Clear"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="ClearButton_Click"/>
-
-                <Button Content="Fill"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="FillButton_Click"/>
-
-                <Button Content="Randomize"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="RandomizeButton_Click"/>
-
-                <Button Content="Row 3"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="RowThreeButton_Click"/>
-
-                <Button Content="Column 4"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="ColumnFourButton_Click"/>
-
-                <Button Content="Checkerboard"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="CheckerboardButton_Click"/>
-
-                <Button Content="Border"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="BorderButton_Click"/>
-
-                <Button Content="Cross"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="CrossButton_Click"/>
-
-                <Button Content="Sparkle"
-                        Width="96"
-                        Height="32"
-                        Margin="0,0,10,10"
-                        Click="SparkleButton_Click"/>
-            </WrapPanel>
-        </StackPanel>
-
-        <!-- Animation sections + controls -->
-        <StackPanel Grid.Row="2" Margin="0,0,0,20">
-            <!-- Pre-set animations -->
-            <TextBlock Text="Pre-Set Animations"
-                       FontSize="16"
-                       FontWeight="Bold"
-                       Foreground="White"
-                       Margin="0,0,0,10"/>
-
-            <WrapPanel Margin="0,0,0,14">
-                <Button Content="Start Row Sweep"
-                        Width="150"
-                        Height="36"
-                        Margin="0,0,12,12"
-                        Click="StartRowSweepButton_Click"/>
-
-                <Button Content="Start Border Pulse"
-                        Width="150"
-                        Height="36"
-                        Margin="0,0,12,12"
-                        Click="StartBorderPulseButton_Click"/>
-
-                <Button Content="Start Spiral"
-                        Width="150"
-                        Height="36"
-                        Margin="0,0,12,12"
-                        Click="StartSpiralButton_Click"/>
-            </WrapPanel>
-
-            <!-- Procedural animations -->
-            <TextBlock Text="Procedural Animations"
-                       FontSize="16"
-                       FontWeight="Bold"
-                       Foreground="White"
-                       Margin="0,0,0,10"/>
-
-            <WrapPanel Margin="0,0,0,14">
-                <Button Content="Start Meteor"
-                        Width="150"
-                        Height="36"
-                        Margin="0,0,12,12"
-                        Click="StartMeteorButton_Click"/>
-
-                <Button Content="Start Sparkle Storm"
-                        Width="150"
-                        Height="36"
-                        Margin="0,0,12,12"
-                        Click="StartSparkleStormButton_Click"/>
-
-                <Button Content="Start EQ Bumper"
-                        Width="150"
-                        Height="36"
-                        Margin="0,0,12,12"
-                        Click="StartEqBumperButton_Click"/>
-
-                <Button Content="Stop Animation"
-                        Width="150"
-                        Height="36"
-                        Margin="0,0,12,12"
-                        Click="StopAnimationButton_Click"/>
-            </WrapPanel>
-
-            <!-- Animation controls -->
-            <TextBlock Text="Animation Controls"
-                       FontSize="16"
-                       FontWeight="Bold"
-                       Foreground="White"
-                       Margin="0,0,0,10"/>
-
-            <Grid Margin="0,0,0,8">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="260"/>
-                    <ColumnDefinition Width="70"/>
-                    <ColumnDefinition Width="40"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Speed -->
-                <TextBlock Grid.Row="0"
-                           Grid.Column="0"
-                           Text="Speed"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="White"
-                           Margin="0,0,12,10"/>
-
-                <Slider x:Name="SpeedSlider"
-                        Grid.Row="0"
-                        Grid.Column="1"
-                        Minimum="40"
-                        Maximum="200"
-                        Value="100"
-                        TickFrequency="10"
-                        SmallChange="5"
-                        LargeChange="10"
-                        VerticalAlignment="Center"
-                        Margin="0,0,0,10"
-                        ValueChanged="SpeedSlider_ValueChanged"/>
-
-                <TextBlock x:Name="SpeedValueTextBlock"
-                           Grid.Row="0"
-                           Grid.Column="2"
-                           Text="100%"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="#DDDDDD"
-                           Margin="12,0,0,10"/>
-
-                <!-- Center X -->
-                <TextBlock Grid.Row="1"
-                           Grid.Column="0"
-                           Text="Center X"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="White"
-                           Margin="0,0,12,10"/>
-
-                <Slider x:Name="CenterXSlider"
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Minimum="-2"
-                        Maximum="2"
-                        Value="0"
-                        TickFrequency="1"
-                        SmallChange="1"
-                        LargeChange="1"
-                        IsSnapToTickEnabled="True"
-                        VerticalAlignment="Center"
-                        Margin="0,0,0,10"
-                        ValueChanged="CenterSlider_ValueChanged"/>
-
-                <TextBlock x:Name="CenterXValueTextBlock"
-                           Grid.Row="1"
-                           Grid.Column="2"
-                           Text="0"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="#DDDDDD"
-                           Margin="12,0,0,10"/>
-
-                <!-- Center Y -->
-                <TextBlock Grid.Row="2"
-                           Grid.Column="0"
-                           Text="Center Y"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="White"
-                           Margin="0,0,12,10"/>
-
-                <Slider x:Name="CenterYSlider"
-                        Grid.Row="2"
-                        Grid.Column="1"
-                        Minimum="-2"
-                        Maximum="2"
-                        Value="0"
-                        TickFrequency="1"
-                        SmallChange="1"
-                        LargeChange="1"
-                        IsSnapToTickEnabled="True"
-                        VerticalAlignment="Center"
-                        Margin="0,0,0,10"
-                        ValueChanged="CenterSlider_ValueChanged"/>
-
-                <TextBlock x:Name="CenterYValueTextBlock"
-                           Grid.Row="2"
-                           Grid.Column="2"
-                           Text="0"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="#DDDDDD"
-                           Margin="12,0,0,10"/>
-
-                <!-- Meteor Tail Length -->
-                <TextBlock Grid.Row="3"
-                           Grid.Column="0"
-                           Text="Meteor Tail"
-                           VerticalAlignment="Center"
-                           FontSize="14"
+                <!-- Header area -->
+                <TextBlock Text="Light Wall Simulator"
+                           FontSize="26"
+                           FontWeight="Bold"
                            Foreground="White"/>
 
-                <Slider x:Name="MeteorTailLengthSlider"
-                        Grid.Row="3"
-                        Grid.Column="1"
-                        Minimum="1"
-                        Maximum="5"
-                        Value="3"
-                        TickFrequency="1"
-                        SmallChange="1"
-                        LargeChange="1"
-                        IsSnapToTickEnabled="True"
-                        VerticalAlignment="Center"
-                        ValueChanged="MeteorTailLengthSlider_ValueChanged"/>
+                <TextBlock Text="Click cells to toggle bulbs by hand, or choose a pattern or animation. Hover a button to see what it does."
+                           FontSize="13"
+                           Foreground="#CCCCCC"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,16"/>
 
-                <TextBlock x:Name="MeteorTailLengthValueTextBlock"
-                           Grid.Row="3"
-                           Grid.Column="2"
-                           Text="3"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="#DDDDDD"
-                           Margin="12,0,0,0"/>
-
-                <!-- Animation status -->
-                <TextBlock x:Name="AnimationStatusTextBlock"
-                           Grid.Row="0"
-                           Grid.Column="4"
-                           Grid.RowSpan="4"
-                           Text="Animation: stopped"
-                           VerticalAlignment="Center"
-                           FontSize="14"
-                           Foreground="#DDDDDD"/>
-
-                <!-- Serialized packet preview label -->
-                <TextBlock Grid.Row="4"
-                           Grid.Column="0"
-                           Text="Packet Preview"
-                           VerticalAlignment="Top"
-                           FontSize="14"
+                <!-- Static patterns section -->
+                <TextBlock Text="Static Patterns"
+                           FontSize="15"
+                           FontWeight="Bold"
                            Foreground="White"
-                           Margin="0,12,12,0"/>
+                           Margin="0,0,0,8"/>
+
+                <!-- Filled in by BuildEffectButtons() in the code-behind. -->
+                <WrapPanel x:Name="StaticPatternsPanel" Margin="0,0,0,6"/>
+
+                <!-- Pre-set animations section -->
+                <TextBlock Text="Pre-Set Animations"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,8,0,8"/>
+
+                <!-- Filled in by BuildEffectButtons() in the code-behind. -->
+                <WrapPanel x:Name="SequenceAnimationsPanel" Margin="0,0,0,6"/>
+
+                <!-- Procedural animations section -->
+                <TextBlock Text="Procedural Animations"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,8,0,8"/>
+
+                <!-- Filled in by BuildEffectButtons() in the code-behind. -->
+                <WrapPanel x:Name="ProceduralAnimationsPanel" Margin="0,0,0,6"/>
 
                 <!--
-                    Read-only preview of the current serialized frame data.
+                    Stop is written out by hand rather than generated, because it
+                    is not an effect. It switches the engine into manual mode,
+                    leaving whatever frame was showing frozen on the wall.
+                -->
+                <Button Content="Stop Animation"
+                        Width="150"
+                        Height="34"
+                        HorizontalAlignment="Left"
+                        Margin="0,4,0,14"
+                        ToolTip="Stops the running effect and freezes the wall on its current frame."
+                        Click="StopAnimationButton_Click"/>
 
-                    This is a development/debugging aid. It lets us confirm that
-                    the current wall state is being packed into the expected bytes
-                    before real serial communication is added.
+                <!-- Animation controls -->
+                <TextBlock Text="Animation Controls"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,0,0,10"/>
+
+                <Grid Margin="0,0,0,14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Speed -->
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="Speed"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,10"/>
+
+                    <Slider x:Name="SpeedSlider"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Minimum="10"
+                            Maximum="300"
+                            Value="100"
+                            TickFrequency="10"
+                            SmallChange="5"
+                            LargeChange="10"
+                            VerticalAlignment="Center"
+                            Margin="0,0,0,10"
+                            ToolTip="How fast effects play. 100% is their designed speed."
+                            ValueChanged="SpeedSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="SpeedValueTextBlock"
+                               Grid.Row="0"
+                               Grid.Column="2"
+                               Text="100%"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,10"/>
+
+                    <!-- Center X -->
+                    <TextBlock Grid.Row="1"
+                               Grid.Column="0"
+                               Text="Center X"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,10"/>
+
+                    <Slider x:Name="CenterXSlider"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Minimum="-3"
+                            Maximum="3"
+                            Value="0"
+                            TickFrequency="1"
+                            SmallChange="1"
+                            LargeChange="1"
+                            IsSnapToTickEnabled="True"
+                            VerticalAlignment="Center"
+                            Margin="0,0,0,10"
+                            ToolTip="Shifts the picture left or right. Content pushed off the edge is discarded."
+                            ValueChanged="CenterSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="CenterXValueTextBlock"
+                               Grid.Row="1"
+                               Grid.Column="2"
+                               Text="0"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,10"/>
+
+                    <!-- Center Y -->
+                    <TextBlock Grid.Row="2"
+                               Grid.Column="0"
+                               Text="Center Y"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,10"/>
+
+                    <Slider x:Name="CenterYSlider"
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Minimum="-2"
+                            Maximum="2"
+                            Value="0"
+                            TickFrequency="1"
+                            SmallChange="1"
+                            LargeChange="1"
+                            IsSnapToTickEnabled="True"
+                            VerticalAlignment="Center"
+                            Margin="0,0,0,10"
+                            ToolTip="Shifts the picture up or down. Content pushed off the edge is discarded."
+                            ValueChanged="CenterSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="CenterYValueTextBlock"
+                               Grid.Row="2"
+                               Grid.Column="2"
+                               Text="0"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,10"/>
+
+                    <!-- Meteor Tail Length -->
+                    <TextBlock Grid.Row="3"
+                               Grid.Column="0"
+                               Text="Meteor Tail"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,0"/>
+
+                    <Slider x:Name="MeteorTailLengthSlider"
+                            Grid.Row="3"
+                            Grid.Column="1"
+                            Minimum="1"
+                            Maximum="5"
+                            Value="3"
+                            TickFrequency="1"
+                            SmallChange="1"
+                            LargeChange="1"
+                            IsSnapToTickEnabled="True"
+                            VerticalAlignment="Center"
+                            ToolTip="How long the Meteor effect's trail is. Only affects Meteor."
+                            ValueChanged="MeteorTailLengthSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="MeteorTailLengthValueTextBlock"
+                               Grid.Row="3"
+                               Grid.Column="2"
+                               Text="3"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,0"/>
+                </Grid>
+
+                <!-- Serialized packet preview -->
+                <TextBlock Text="Packet Preview"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,0,0,8"/>
+
+                <!--
+                    Read-only preview of the bytes that would go down the serial
+                    cable for the frame currently on screen.
+
+                    This is a development aid. It lets us confirm the wall state
+                    is being packed as expected before any real hardware is
+                    involved, and it will be the first thing to check when the
+                    wall eventually shows something unexpected.
                 -->
                 <TextBox x:Name="SerializedPacketTextBox"
-                         Grid.Row="4"
-                         Grid.Column="1"
-                         Grid.ColumnSpan="4"
-                         Margin="0,12,0,0"
                          IsReadOnly="True"
                          TextWrapping="Wrap"
-                         MinHeight="56"
+                         MinHeight="60"
                          Padding="8"
                          Background="#232323"
                          Foreground="#DDDDDD"
                          BorderBrush="#444444"
-                         FontFamily="Consolas"/>
-            </Grid>
-        </StackPanel>
+                         FontFamily="Consolas"
+                         FontSize="12"/>
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- Visual simulator area -->
-        <Border Grid.Row="3"
-                Background="#2B2B2B"
-                CornerRadius="16"
-                Padding="24">
-            <!--
-                UniformGrid lays out all children in evenly sized cells.
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-                This is perfect for a 5x7 wall because the code-behind can
-                dynamically add 35 buttons, and UniformGrid will automatically
-                place them into 5 rows and 7 columns.
-            -->
-            <UniformGrid x:Name="WallGrid"
-                         Rows="5"
-                         Columns="7"/>
-        </Border>
+            <Border Grid.Row="0"
+                    Background="#2B2B2B"
+                    CornerRadius="16"
+                    Padding="20">
+                <!--
+                    Viewbox scales whatever is inside it to fit the space while
+                    keeping its proportions.
+
+                    That is what keeps the wall looking like a 7-wide, 5-tall
+                    wall at any window size. Without it, the grid would stretch
+                    to fill whatever shape the window happened to be, and the
+                    bulbs would become tall thin rectangles on a narrow window -
+                    a misleading picture of a physical object we are trying to
+                    represent faithfully.
+
+                    The 700 x 500 size below is only a ratio. The Viewbox scales
+                    it up or down to whatever actually fits.
+                -->
+                <Viewbox Stretch="Uniform">
+                    <UniformGrid x:Name="WallGrid"
+                                 Rows="5"
+                                 Columns="7"
+                                 Width="700"
+                                 Height="500"/>
+                </Viewbox>
+            </Border>
+
+            <!-- Status readout: what is playing, and how fast we are drawing -->
+            <StackPanel Grid.Row="1" Margin="4,16,0,0">
+                <TextBlock x:Name="AnimationStatusTextBlock"
+                           Text="Manual mode"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="#DDDDDD"
+                           TextWrapping="Wrap"/>
+
+                <TextBlock x:Name="EffectDescriptionTextBlock"
+                           Text="Click cells to toggle bulbs by hand."
+                           FontSize="13"
+                           Foreground="#999999"
+                           TextWrapping="Wrap"
+                           Margin="0,4,0,0"/>
+
+                <!--
+                    Shows the real measured redraw rate. Handy for confirming the
+                    simulator keeps up, and it will matter more once the wall is
+                    being driven for real.
+                -->
+                <TextBlock x:Name="FrameRateTextBlock"
+                           Text=""
+                           FontSize="12"
+                           Foreground="#777777"
+                           Margin="0,6,0,0"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

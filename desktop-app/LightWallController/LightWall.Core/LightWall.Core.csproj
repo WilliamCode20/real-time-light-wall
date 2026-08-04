@@ -1,9 +1,22 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LightWall.Core
+
+    The "brain" library. Contains the wall model, the visual effects, the
+    playback engine, and the serial packet format.
+
+    Deliberately targets plain net10.0 (NOT net10.0-windows) and references
+    nothing. That restriction is a feature: it makes it impossible to
+    accidentally reference WPF from here, which keeps this code testable and
+    reusable.
+
+    Shared settings (ImplicitUsings, Nullable) come from Directory.Build.props
+    in the parent folder.
+  -->
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
   </PropertyGroup>
 
 </Project>
