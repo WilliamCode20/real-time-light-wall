@@ -30,18 +30,11 @@ The output pipeline, and the virtual wall it feeds:
   blackout on detach
 - 115 tests
 
+Also done: both walls are now shown in the window, with fault-injection sliders.
+
 ## Current Priority
 
-### 1. Show the virtual wall in the interface
-
-The pipeline runs but is only visible as a line of statistics. Draw the decoded
-frame as a second wall beside the engine's.
-
-When the two match while sliders are being dragged, the whole chain is proven
-except the physical layer. Turning up the fault-injection probability and
-watching it recover makes the error handling visible too.
-
-### 2. Serial transport in `LightWall.IO`
+### 1. Serial transport in `LightWall.IO`
 
 Implement `IWallTransport` over a real port. Everything upstream already works,
 so this is the only new code needed.
@@ -60,7 +53,7 @@ starting to talk.
 
 `SerialPort.Write` is already off the UI thread — the output service has its own.
 
-### 3. A minimal hardware test path in the UI
+### 2. A minimal hardware test path in the UI
 
 Added conservatively, not as a UI overhaul:
 
@@ -138,9 +131,10 @@ Not urgent, worth knowing:
 - `WallEngine` itself is still single-threaded and unaware of threads. That is
   deliberate — `WallShowClock` owns it and is the only thing allowed to touch it.
   Do not add locking inside the engine; go through the clock.
-- There is no interface control for detaching output or adjusting fault
-  injection. Both are settable in code and worth exposing alongside the virtual
-  wall display.
+- The output statistics never reset, so they mix clean and faulty periods
+  together and cannot be read as a delivery rate for either. A "reset counters"
+  button beside the fault sliders would make the numbers mean something.
+- There is no interface control for detaching output. It is settable in code.
 
 ## Near-Term Guardrails
 

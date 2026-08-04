@@ -270,6 +270,108 @@
                                Margin="12,0,0,0"/>
                 </Grid>
 
+                <!--
+                    Fault injection.
+
+                    These deliberately damage the byte stream on its way to the
+                    virtual wall, imitating a noisy or failing cable.
+
+                    This is not a toy. A real cable will occasionally lose or
+                    mangle a byte, and the question that matters is not whether
+                    that happens but whether everything downstream recovers when
+                    it does. Making a real cable misbehave on demand is very
+                    difficult. Here it is a slider.
+
+                    Turn either up and watch the bottom wall start lagging behind
+                    the top one as damaged packets are thrown away, then catch
+                    up. The statistics underneath it count what happened.
+                -->
+                <TextBlock Text="Virtual Wall Faults"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,0,0,4"/>
+
+                <TextBlock Text="Damages the byte stream on purpose, to prove the receiver recovers."
+                           FontSize="12"
+                           Foreground="#999999"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
+
+                <Grid Margin="0,0,0,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="Drop bytes"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,10"/>
+
+                    <Slider x:Name="ByteDropSlider"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Minimum="0"
+                            Maximum="5"
+                            Value="0"
+                            TickFrequency="0.5"
+                            SmallChange="0.1"
+                            LargeChange="0.5"
+                            VerticalAlignment="Center"
+                            Margin="0,0,0,10"
+                            ToolTip="Chance of each byte vanishing. The nastiest fault, because it shifts everything after it out of position."
+                            ValueChanged="FaultSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="ByteDropValueTextBlock"
+                               Grid.Row="0"
+                               Grid.Column="2"
+                               Text="0.0%"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,10"/>
+
+                    <TextBlock Grid.Row="1"
+                               Grid.Column="0"
+                               Text="Corrupt bytes"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,0"/>
+
+                    <Slider x:Name="ByteCorruptSlider"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Minimum="0"
+                            Maximum="5"
+                            Value="0"
+                            TickFrequency="0.5"
+                            SmallChange="0.1"
+                            LargeChange="0.5"
+                            VerticalAlignment="Center"
+                            ToolTip="Chance of each byte arriving with one bit flipped. The checksum should catch these."
+                            ValueChanged="FaultSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="ByteCorruptValueTextBlock"
+                               Grid.Row="1"
+                               Grid.Column="2"
+                               Text="0.0%"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,0"/>
+                </Grid>
+
                 <!-- Serialized packet preview -->
                 <TextBlock Text="Packet Preview"
                            FontSize="15"
@@ -301,15 +403,42 @@
 
         <!-- Visual simulator area -->
         <Grid Grid.Column="1">
+            <!--
+                TWO WALLS, ONE ABOVE THE OTHER
+
+                Top    - what the engine decided the wall should look like.
+                Bottom - what a wall on the other end of the cable would
+                         actually be showing, decoded from the packets we sent.
+
+                In normal running these are identical, and that is the point:
+                seeing them match while sliders are being dragged is the proof
+                that the whole chain works - packing, transmission, framing,
+                checksum validation and unpacking.
+
+                They come apart when something goes wrong. Turn up the fault
+                sliders and the bottom wall starts freezing on old frames as
+                packets get thrown away, then catches up again. That is the real
+                error handling being exercised, not a mock-up of it.
+            -->
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0"
+            <TextBlock Grid.Row="0"
+                       Text="Engine — what the wall should show"
+                       FontSize="13"
+                       FontWeight="Bold"
+                       Foreground="#AAAAAA"
+                       Margin="4,0,0,6"/>
+
+            <Border Grid.Row="1"
                     Background="#2B2B2B"
                     CornerRadius="16"
-                    Padding="20">
+                    Padding="14">
                 <!--
                     Viewbox scales whatever is inside it to fit the space while
                     keeping its proportions.
@@ -333,8 +462,28 @@
                 </Viewbox>
             </Border>
 
+            <TextBlock Grid.Row="2"
+                       Text="Virtual wall — decoded from the packets sent"
+                       FontSize="13"
+                       FontWeight="Bold"
+                       Foreground="#AAAAAA"
+                       Margin="4,14,0,6"/>
+
+            <Border Grid.Row="3"
+                    Background="#242424"
+                    CornerRadius="16"
+                    Padding="14">
+                <Viewbox Stretch="Uniform">
+                    <UniformGrid x:Name="VirtualWallGrid"
+                                 Rows="5"
+                                 Columns="7"
+                                 Width="700"
+                                 Height="500"/>
+                </Viewbox>
+            </Border>
+
             <!-- Status readout: what is playing, and how fast we are drawing -->
-            <StackPanel Grid.Row="1" Margin="4,16,0,0">
+            <StackPanel Grid.Row="4" Margin="4,14,0,0">
                 <TextBlock x:Name="AnimationStatusTextBlock"
                            Text="Manual mode"
                            FontSize="15"

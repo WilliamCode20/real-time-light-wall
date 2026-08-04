@@ -135,6 +135,42 @@ namespace LightWall.App
         private readonly WallFrame _displayFrame = new();
 
         /// <summary>
+        /// The window's copy of what the VIRTUAL wall is showing - that is, what
+        /// the receiver decoded from the packets that actually arrived.
+        ///
+        /// In normal running this matches _displayFrame exactly. When bytes are
+        /// being dropped or corrupted it falls behind, because damaged packets
+        /// are discarded and the wall keeps showing the last good frame until
+        /// another one gets through.
+        /// </summary>
+        private readonly WallFrame _virtualFrame = new();
+
+        /// <summary>
+        /// The 35 coloured squares making up the virtual wall display.
+        ///
+        /// These are Borders rather than Buttons because, unlike the engine
+        /// wall, nothing here is clickable. A Border is a plain rectangle with a
+        /// colour - lighter than a Button, and without the hover and focus
+        /// highlighting that would be misleading on a display that is only ever
+        /// reporting what the hardware would be doing.
+        /// </summary>
+        private readonly Border[] _virtualCells =
+            new Border[WallFrame.Rows * WallFrame.Columns];
+
+        /// <summary>
+        /// What each virtual cell looked like last time it was drawn, so
+        /// unchanged ones can be skipped.
+        /// </summary>
+        private readonly bool[] _renderedVirtualStates =
+            new bool[WallFrame.Rows * WallFrame.Columns];
+
+        /// <summary>
+        /// Forces a full repaint of the virtual wall on the next pass. Needed
+        /// for the first draw, for the same reason as _forceFullRedraw.
+        /// </summary>
+        private bool _forceVirtualRedraw = true;
+
+        /// <summary>
         /// Direct references to the 35 wall buttons, stored in row-major order
         /// so button number (row * 7 + column) is the one for that cell.
         ///
@@ -209,9 +245,11 @@ namespace LightWall.App
             _output = new WallOutputService(_clock);
 
             BuildWallGrid();
+            BuildVirtualWallGrid();
             BuildEffectButtons();
 
             ApplyControlsToEngine();
+            ApplyFaultSettings();
             UpdateControlLabels();
             UpdateStatusText();
 
@@ -223,6 +261,7 @@ namespace LightWall.App
             _output.Attach(_loopback);
 
             RenderWall();
+            RenderVirtualWall();
             UpdateOutputStatsText();
 
             StartRenderLoop();
@@ -321,6 +360,34 @@ namespace LightWall.App
         }
 
         /// <summary>
+        /// Creates the 35 coloured squares of the virtual wall display.
+        ///
+        /// Plain Borders rather than Buttons: nothing here is clickable, and
+        /// button hover highlighting would be actively misleading on a display
+        /// whose only job is to report what the hardware would be showing.
+        /// </summary>
+        private void BuildVirtualWallGrid()
+        {
+            VirtualWallGrid.Children.Clear();
+
+            for (int row = 0; row < WallFrame.Rows; row++)
+            {
+                for (int column = 0; column < WallFrame.Columns; column++)
+                {
+                    var cell = new Border
+                    {
+                        Margin = new Thickness(8),
+                        CornerRadius = new CornerRadius(4),
+                        BorderThickness = new Thickness(2)
+                    };
+
+                    VirtualWallGrid.Children.Add(cell);
+                    _virtualCells[GetCellIndex(row, column)] = cell;
+                }
+            }
+        }
+
+        /// <summary>
         /// Creates one button per effect, in the three labelled sections.
         ///
         /// This is where the catalog pays off: the window does not know or care
@@ -407,6 +474,7 @@ namespace LightWall.App
             _frameClock.Restart();
 
             RenderWall();
+            RenderVirtualWall();
             UpdateFrameRateReadout(deltaSeconds);
             UpdateOutputStatsPeriodically(deltaSeconds);
         }
@@ -457,6 +525,54 @@ namespace LightWall.App
             }
 
             _forceFullRedraw = false;
+        }
+
+        /// <summary>
+        /// Draws what the virtual wall - the software model of the Arduino - is
+        /// currently showing.
+        ///
+        /// WHAT THIS IS FOR
+        ///
+        /// Comparison. The wall above it shows what the engine decided; this one
+        /// shows what a real wall would actually be displaying, having received
+        /// only the packets that survived the journey.
+        ///
+        /// While everything is working the two are identical, which is the proof
+        /// that packing, transmission, framing, checksum validation and
+        /// unpacking all agree with each other.
+        ///
+        /// Turn up the fault sliders and this one starts falling behind, holding
+        /// an older frame while damaged packets are discarded, then snapping
+        /// back into step when a good one arrives. That is the genuine recovery
+        /// behaviour, running for real.
+        /// </summary>
+        private void RenderVirtualWall()
+        {
+            // Take a copy: the output thread is writing into the receiver while
+            // we read, so reading it directly could give a torn picture.
+            _loopback.CopyReceivedFrameTo(_virtualFrame);
+
+            for (int row = 0; row < WallFrame.Rows; row++)
+            {
+                for (int column = 0; column < WallFrame.Columns; column++)
+                {
+                    int index = GetCellIndex(row, column);
+                    bool isOn = _virtualFrame.GetCell(row, column);
+
+                    if (!_forceVirtualRedraw && _renderedVirtualStates[index] == isOn)
+                    {
+                        continue;
+                    }
+
+                    _renderedVirtualStates[index] = isOn;
+
+                    Border cell = _virtualCells[index];
+                    cell.Background = isOn ? LitBackgroundBrush : UnlitBackgroundBrush;
+                    cell.BorderBrush = isOn ? LitBorderBrush : UnlitBorderBrush;
+                }
+            }
+
+            _forceVirtualRedraw = false;
         }
 
         /// <summary>
@@ -588,6 +704,18 @@ namespace LightWall.App
         }
 
         /// <summary>
+        /// Copies the fault sliders into the loopback transport.
+        ///
+        /// The sliders read as a percentage; the transport wants a probability
+        /// from 0 to 1, so 2.5% becomes 0.025.
+        /// </summary>
+        private void ApplyFaultSettings()
+        {
+            _loopback.ByteDropProbability = ByteDropSlider.Value / 100.0;
+            _loopback.ByteCorruptionProbability = ByteCorruptSlider.Value / 100.0;
+        }
+
+        /// <summary>
         /// Refreshes the small number shown beside each slider.
         /// </summary>
         private void UpdateControlLabels()
@@ -596,6 +724,28 @@ namespace LightWall.App
             CenterXValueTextBlock.Text = ((int)CenterXSlider.Value).ToString();
             CenterYValueTextBlock.Text = ((int)CenterYSlider.Value).ToString();
             MeteorTailLengthValueTextBlock.Text = ((int)MeteorTailLengthSlider.Value).ToString();
+
+            ByteDropValueTextBlock.Text = $"{ByteDropSlider.Value:F1}%";
+            ByteCorruptValueTextBlock.Text = $"{ByteCorruptSlider.Value:F1}%";
+        }
+
+        /// <summary>
+        /// Runs whenever either fault slider moves.
+        ///
+        /// Takes effect on the very next packet, so the virtual wall starts
+        /// misbehaving - and recovering - while you watch.
+        /// </summary>
+        private void FaultSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            // WPF raises this while the window is still being built, before the
+            // named elements exist.
+            if (ByteDropValueTextBlock is null || ByteCorruptValueTextBlock is null)
+            {
+                return;
+            }
+
+            ApplyFaultSettings();
+            UpdateControlLabels();
         }
 
         /// <summary>

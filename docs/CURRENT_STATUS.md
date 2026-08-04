@@ -100,13 +100,27 @@ round-trip packing, effect repeatability, engine behaviour, the receiver's
 stream handling under deliberately injected faults, and the output pipeline
 end to end.
 
+### Two walls side by side
+
+The window shows both walls stacked in the right-hand column:
+
+- **Engine** — what the effect decided the wall should look like
+- **Virtual wall** — what a real wall would be showing, decoded from the packets
+  that actually arrived
+
+While everything is working they are identical, which is the proof that packing,
+transmission, framing, checksum validation and unpacking all agree.
+
+Two sliders damage the byte stream on purpose. Turn up "Drop bytes" and the lower
+wall starts lagging behind the upper one as damaged packets are discarded, then
+snaps back into step when a good one gets through. Observed at 4% byte drop: the
+walls visibly diverge by a frame, checksum failures accumulate, bytes get
+discarded during resynchronisation, and the wall keeps recovering rather than
+staying broken.
+
+That is the genuine recovery path running for real, not a mock-up of it.
+
 ## Not Yet Implemented
-
-### Virtual wall display
-
-The virtual wall exists and runs, but the interface only shows its statistics as
-text. Displaying its decoded frame as a second wall alongside the engine's is the
-next visible step.
 
 ### Serial communication
 
