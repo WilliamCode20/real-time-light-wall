@@ -112,6 +112,81 @@ This confirms that:
 - the spatial layout is already understood
 - reusable pattern logic is a good fit for this installation
 
+## Relay Labels — the mapping is documented on the hardware
+
+Every SSR in the enclosure carries a sticker: **A1–A7, B1–B7, C1–C7, D1–D7,
+E1–E7**. Thirty-five of them, which is the whole wall.
+
+The letter is the row and the number is the column counting from 1. That matches
+the original sketch's own convention exactly:
+
+- `rowAEOff()` touches `lights[0]` and `lights[4]` → A = 0, E = 4
+- `rowBDOff()` touches `lights[1]` and `lights[3]` → B = 1, D = 3
+- `rowCOff()` touches `lights[2]` → C = 2
+- `col4On()` touches `lights[r][3]` → column 4 = index 3
+
+So the builder and the sketch author agreed with each other, which is much
+stronger footing than either source alone. Encoded in
+`LightWall.Core/Models/WallHardwareMap.cs`.
+
+Examples: A1 = bulb 0 = pin 2. C4 = bulb 17 = pin 27. E7 = bulb 34 = pin 44.
+
+**Still unverified:** none of this proves relay A1 physically switches the
+top-left bulb. It proves the labelling is self-consistent, not that the wiring
+matches it. Only the Identify Bulb mode settles that.
+
+Note that the relays are **not** arranged in label order in the enclosure — the
+middle rail mixes C6, D2 and D3, and the bottom rail runs A6 to A1 right to left.
+Physical position in the box means nothing; only the stickers do.
+
+## Control Circuit — measured
+
+Confirmed from photographs and the owner's survey:
+
+```
+Arduino digital pin → 120 Ω resistor → SSR terminal 3 (+)
+SSR terminal 4 (−)  → common rail → single wire → Arduino GND
+```
+
+- **35 resistors, 120 Ω each**, one per channel, on the breadboard
+- **No driver stage.** The relays are switched directly by the digital pins.
+- **Nothing connected to 5V or 3.3V.** The pins themselves are the supply.
+- **One shared ground wire** back to a single Arduino GND pin
+- Arduino powered from the **barrel jack**; the **USB port is unused and free**
+
+### Current draw — needs one confirmation
+
+Measured roughly **6 mA per channel** when energised. That is consistent with the
+120 Ω resistor:
+
+```
+5 V − (6 mA × 120 Ω) = 4.28 V across the relay input
+```
+
+which is a sensible drop for an opto-input SSR.
+
+**35 × 6 mA = 210 mA with the whole wall lit.** The ATmega2560's absolute maximum
+for total current through its VCC/GND pins is **200 mA**, so an all-on frame sits
+fractionally over the chip's stress rating.
+
+This is not new and nothing has failed — the original show included full-wall
+flashes and ran fine. Absolute maximum is a stress rating rather than a cliff,
+and brief excursions are evidently survivable.
+
+What *is* new is duration. The old show ran one song, roughly four minutes, with
+all-on lasting a beat at a time. This app could hold `Fill` for hours during a
+set, in a hot enclosure. Worth avoiding effects that park all 35 on for long
+stretches.
+
+**To confirm the 6 mA figure:** measure DC **volts** across one 120 Ω resistor
+with that bulb lit, then divide by 120. About 0.72 V confirms 6 mA. This is a
+parallel measurement, so nothing needs disconnecting — unlike a current reading,
+which requires breaking the circuit and putting the meter in series.
+
+If this ever needs fixing on a future installation, the standard answer is a
+driver stage — five ULN2803A chips at eight channels each, after which the
+Arduino sources almost nothing.
+
 ## Known Wiring
 
 - bulbs are LEDs

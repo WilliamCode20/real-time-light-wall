@@ -116,7 +116,8 @@ namespace LightWall.Tests
             Assert.Equal(9, catalog.StaticPatterns.Count);
             Assert.Equal(3, catalog.SequenceAnimations.Count);
             Assert.Equal(3, catalog.ProceduralAnimations.Count);
-            Assert.Equal(15, catalog.AllEffects.Count);
+            Assert.Single(catalog.Diagnostics);
+            Assert.Equal(16, catalog.AllEffects.Count);
         }
 
         [Fact]

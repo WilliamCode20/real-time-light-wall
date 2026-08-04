@@ -704,6 +704,145 @@ namespace LightWall.App
         }
 
         /// <summary>
+        /// Starts the hardware check, lighting the first bulb.
+        /// </summary>
+        private void IdentifyStartButton_Click(object sender, RoutedEventArgs e)
+        {
+            IWallEffect? identify = _catalog.FindByName("Identify Bulb");
+
+            if (identify is null)
+            {
+                return;
+            }
+
+            _clock.Modify(engine =>
+            {
+                engine.Parameters.IdentifyBulbIndex = 0;
+                engine.Play(identify);
+            });
+
+            UpdateStatusText();
+            UpdateIdentifyReadout();
+        }
+
+        /// <summary>
+        /// Steps back one bulb.
+        /// </summary>
+        private void IdentifyPreviousButton_Click(object sender, RoutedEventArgs e)
+        {
+            StepIdentifyBy(-1);
+        }
+
+        /// <summary>
+        /// Steps forward one bulb.
+        /// </summary>
+        private void IdentifyNextButton_Click(object sender, RoutedEventArgs e)
+        {
+            StepIdentifyBy(1);
+        }
+
+        /// <summary>
+        /// Moves the identified bulb forward or back, wrapping round at both
+        /// ends so stepping past bulb 34 returns to bulb 0.
+        ///
+        /// Wrapping rather than stopping because this gets used while walking
+        /// round a wall, and hitting an invisible wall at one end is a small
+        /// annoyance that would happen dozens of times in a session.
+        /// </summary>
+        private void StepIdentifyBy(int delta)
+        {
+            _clock.Modify(engine =>
+            {
+                int count = WallHardwareMap.BulbCount;
+
+                // Adding count before taking the remainder keeps the result
+                // positive. In C#, -1 % 35 is -1 rather than 34, which would
+                // put us outside the wall.
+                int next = ((engine.Parameters.IdentifyBulbIndex + delta) % count + count) % count;
+
+                engine.Parameters.IdentifyBulbIndex = next;
+            });
+
+            EnsureIdentifyEffectRunning();
+            UpdateIdentifyReadout();
+        }
+
+        /// <summary>
+        /// Jumps to whatever relay label has been typed, such as "C4".
+        /// </summary>
+        private void IdentifyGoButton_Click(object sender, RoutedEventArgs e)
+        {
+            GoToTypedRelayLabel();
+        }
+
+        /// <summary>
+        /// Lets Enter work in the label box, so a label can be typed and
+        /// confirmed without reaching for the mouse.
+        /// </summary>
+        private void IdentifyLabelTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                GoToTypedRelayLabel();
+            }
+        }
+
+        /// <summary>
+        /// Reads the typed relay label and lights that bulb.
+        ///
+        /// A label that cannot be understood says so in the readout rather than
+        /// failing silently, because a typo while standing at the wall should be
+        /// obvious immediately rather than looking like a dead bulb.
+        /// </summary>
+        private void GoToTypedRelayLabel()
+        {
+            string typed = IdentifyLabelTextBox.Text;
+
+            if (!WallHardwareMap.TryParseRelayLabel(typed, out int bulbIndex))
+            {
+                IdentifyReadoutTextBlock.Text =
+                    $"Could not read \"{typed}\" as a relay label. Expected something like A1 or E7.";
+                return;
+            }
+
+            _clock.Modify(engine => engine.Parameters.IdentifyBulbIndex = bulbIndex);
+
+            EnsureIdentifyEffectRunning();
+            UpdateIdentifyReadout();
+        }
+
+        /// <summary>
+        /// Switches to the identify effect if something else is playing.
+        ///
+        /// This means the Previous, Next and Go controls work straight away
+        /// without having to press Start first, which is one less thing to
+        /// remember while concentrating on the wall.
+        /// </summary>
+        private void EnsureIdentifyEffectRunning()
+        {
+            IWallEffect? identify = _catalog.FindByName("Identify Bulb");
+
+            if (identify is null || ReferenceEquals(_clock.ActiveEffect, identify))
+            {
+                return;
+            }
+
+            _clock.Modify(engine => engine.Play(identify));
+            UpdateStatusText();
+        }
+
+        /// <summary>
+        /// Writes the current bulb's four names into the readout.
+        /// </summary>
+        private void UpdateIdentifyReadout()
+        {
+            int bulbIndex = 0;
+            _clock.Modify(engine => bulbIndex = engine.Parameters.IdentifyBulbIndex);
+
+            IdentifyReadoutTextBlock.Text = WallHardwareMap.Describe(bulbIndex);
+        }
+
+        /// <summary>
         /// Copies the fault sliders into the loopback transport.
         ///
         /// The sliders read as a percentage; the transport wants a probability

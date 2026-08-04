@@ -271,6 +271,107 @@
                 </Grid>
 
                 <!--
+                    Hardware check.
+
+                    Lights one bulb at a time so the wiring can be confirmed
+                    against the relay labels in the enclosure.
+
+                    This answers the one question that cannot be settled at a
+                    desk: whether relay A1 really does switch the top-left bulb.
+                    The app and the firmware will agree perfectly with each other
+                    while both being wrong about the physical wall, and only
+                    looking at it can tell.
+
+                    Stepping is manual on purpose. An automatic sweep would move
+                    on while you were still walking round to look at the wall.
+                -->
+                <TextBlock Text="Hardware Check"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,0,0,4"/>
+
+                <TextBlock Text="Lights one bulb at a time, so the wiring can be checked against the relay labels."
+                           FontSize="12"
+                           Foreground="#999999"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
+
+                <!--
+                    The readout naming the current bulb every way at once: its
+                    number, its position, the sticker on its relay, and the
+                    Arduino pin. Having all four visible means a reading can be
+                    checked against the wall and against the relay that just
+                    clicked without doing arithmetic on a ladder.
+                -->
+                <Border Background="#232323"
+                        BorderBrush="#444444"
+                        BorderThickness="1"
+                        Padding="10,8"
+                        Margin="0,0,0,10">
+                    <TextBlock x:Name="IdentifyReadoutTextBlock"
+                               Text="Not running"
+                               FontFamily="Consolas"
+                               FontSize="13"
+                               Foreground="#FFC700"
+                               TextWrapping="Wrap"/>
+                </Border>
+
+                <WrapPanel Margin="0,0,0,10">
+                    <Button Content="Start Check"
+                            Width="110"
+                            Height="32"
+                            Margin="0,0,10,8"
+                            ToolTip="Lights a single bulb and holds it, so the wiring can be checked."
+                            Click="IdentifyStartButton_Click"/>
+
+                    <Button Content="◀ Previous"
+                            Width="100"
+                            Height="32"
+                            Margin="0,0,10,8"
+                            ToolTip="Step back one bulb."
+                            Click="IdentifyPreviousButton_Click"/>
+
+                    <Button Content="Next ▶"
+                            Width="100"
+                            Height="32"
+                            Margin="0,0,10,8"
+                            ToolTip="Step forward one bulb."
+                            Click="IdentifyNextButton_Click"/>
+                </WrapPanel>
+
+                <!--
+                    Jumping straight to a relay label. Faster than stepping
+                    through 35 when spot-checking a single suspicious bulb, and
+                    it lets you work from the sticker rather than from a number.
+                -->
+                <WrapPanel Margin="0,0,0,16">
+                    <TextBlock Text="Go to relay"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,10,0"/>
+
+                    <TextBox x:Name="IdentifyLabelTextBox"
+                             Width="70"
+                             Height="28"
+                             VerticalContentAlignment="Center"
+                             Padding="6,0"
+                             Background="#232323"
+                             Foreground="#DDDDDD"
+                             BorderBrush="#444444"
+                             FontFamily="Consolas"
+                             ToolTip="Type a relay label such as C4, then press Enter or Go."
+                             KeyDown="IdentifyLabelTextBox_KeyDown"/>
+
+                    <Button Content="Go"
+                            Width="60"
+                            Height="28"
+                            Margin="10,0,0,0"
+                            Click="IdentifyGoButton_Click"/>
+                </WrapPanel>
+
+                <!--
                     Fault injection.
 
                     These deliberately damage the byte stream on its way to the

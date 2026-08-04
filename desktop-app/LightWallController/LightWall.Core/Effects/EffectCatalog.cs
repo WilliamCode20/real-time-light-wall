@@ -48,11 +48,13 @@ namespace LightWall.Core.Effects
             StaticPatterns = BuildStaticPatterns();
             SequenceAnimations = BuildSequenceAnimations();
             ProceduralAnimations = BuildProceduralAnimations();
+            Diagnostics = new List<IWallEffect> { new BulbIdentifyEffect() };
 
             var everything = new List<IWallEffect>();
             everything.AddRange(StaticPatterns);
             everything.AddRange(SequenceAnimations);
             everything.AddRange(ProceduralAnimations);
+            everything.AddRange(Diagnostics);
             AllEffects = everything;
         }
 
@@ -72,6 +74,15 @@ namespace LightWall.Core.Effects
         /// stored in advance.
         /// </summary>
         public IReadOnlyList<IWallEffect> ProceduralAnimations { get; }
+
+        /// <summary>
+        /// Tools for checking the hardware rather than for putting on a show.
+        ///
+        /// Kept as their own list so the interface can present them separately -
+        /// a DJ scrolling for something to play should not run into "Identify
+        /// Bulb" between Meteor and Sparkle Storm.
+        /// </summary>
+        public IReadOnlyList<IWallEffect> Diagnostics { get; }
 
         /// <summary>
         /// Every effect in the catalog, in the order the sections appear.

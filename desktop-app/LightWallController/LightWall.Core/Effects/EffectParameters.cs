@@ -37,6 +37,14 @@ namespace LightWall.Core.Effects
         public int MeteorTailLength { get; set; } = 3;
 
         /// <summary>
+        /// Which single bulb the Identify Bulb effect should light, from 0 to 34.
+        ///
+        /// Used only during hardware checking, to confirm that the relay labels
+        /// and the pin map match the physical wall.
+        /// </summary>
+        public int IdentifyBulbIndex { get; set; }
+
+        /// <summary>
         /// Creates a copy of these parameters.
         ///
         /// This is useful when something needs a stable snapshot of the settings
@@ -48,7 +56,8 @@ namespace LightWall.Core.Effects
         {
             return new EffectParameters
             {
-                MeteorTailLength = MeteorTailLength
+                MeteorTailLength = MeteorTailLength,
+                IdentifyBulbIndex = IdentifyBulbIndex
             };
         }
     }
