@@ -84,6 +84,28 @@ accepted, checksum failures and discarded bytes.
 
 Measured on a normal run: 240 packets sent, 240 accepted, zero failures.
 
+### Serial transport
+
+`SerialTransport` in `LightWall.IO` implements the same `IWallTransport`
+interface as the loopback, so everything upstream is unchanged — it was the only
+new code needed to drive real hardware.
+
+It handles the reset that happens on opening a port: the Arduino watches the DTR
+line, which is wired to its reset pin, so connecting reboots the board and the
+bootloader swallows everything for the first couple of seconds. Rather than
+blocking `Connect` (which would freeze the window), it records when the port
+opened and discards packets until the board is ready. `IsWaitingForBoardReset`
+and `PacketsDroppedDuringReset` report that state, so the pause is visible rather
+than looking like a broken connection.
+
+Writes have a 250 ms timeout, so a port whose far end stopped listening cannot
+hang the output thread indefinitely. Failures are recorded in `LastError` and
+rethrown for the output service to absorb, which means output resumes by itself
+if a cable is plugged back in.
+
+`SerialPortLister` enumerates available ports, sorted numerically so COM9 comes
+before COM10.
+
 ### Serialization layer
 
 Fixed 9-byte packets: two sync bytes, command, five payload bytes, checksum.
@@ -122,15 +144,12 @@ That is the genuine recovery path running for real, not a mock-up of it.
 
 ## Not Yet Implemented
 
-### Serial communication
+### Serial wiring in the UI
 
-Not started. `LightWall.IO` is still an empty project.
-
-The abstraction it plugs into is done: `SerialTransport` needs only to implement
-`IWallTransport`, and everything upstream already works. It will need the
-`System.IO.Ports` package, and it must handle the port-open reset — opening a
-serial connection to a Mega toggles DTR and reboots the board, so roughly the
-first 1.5 to 2 seconds of anything sent will be swallowed by the bootloader.
+`SerialTransport` and `SerialPortLister` are written and tested, but there is no
+way to select a port from the window yet — the app still attaches the loopback at
+startup. Adding a port dropdown and a connect button is the next step, and is the
+only thing standing between the app and real hardware.
 
 ### Arduino firmware
 

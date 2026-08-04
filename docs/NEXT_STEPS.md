@@ -32,36 +32,27 @@ The output pipeline, and the virtual wall it feeds:
 
 Also done: both walls are now shown in the window, with fault-injection sliders.
 
+Also done: `SerialTransport` and `SerialPortLister` in `LightWall.IO`, including
+the port-open reset handling.
+
 ## Current Priority
 
-### 1. Serial transport in `LightWall.IO`
-
-Implement `IWallTransport` over a real port. Everything upstream already works,
-so this is the only new code needed.
-
-- enumerate COM ports
-- connect and disconnect
-- send a packet
-- report connection state
-
-Needs the `System.IO.Ports` package.
-
-**Handle the port-open reset.** Opening a serial connection to a Mega toggles the
-DTR line, which reboots the board. For roughly the first 1.5 to 2 seconds
-afterwards the bootloader is running and will swallow anything sent. Wait before
-starting to talk.
-
-`SerialPort.Write` is already off the UI thread — the output service has its own.
-
-### 2. A minimal hardware test path in the UI
+### 1. A minimal hardware test path in the UI
 
 Added conservatively, not as a UI overhaul:
 
-- choose transport: virtual wall or a COM port
-- connect / disconnect
-- send the current frame once
+- a dropdown listing ports from `SerialPortLister`, plus a refresh
+- connect / disconnect, switching `WallOutputService` between the loopback and a
+  `SerialTransport`
+- show `IsWaitingForBoardReset` while the board restarts, otherwise the first two
+  seconds look identical to a broken connection
+- show `LastError` when a connection fails
 
-### 4. Arduino firmware
+Note that the virtual wall should keep running even when serial is attached — it
+is just as useful as a reference when the physical wall is doing something
+unexpected.
+
+### 2. Arduino firmware
 
 Translate `VirtualWallReceiver` into C++. It was written specifically for this:
 byte at a time, tiny fixed buffer, no allocation — the same shape an Arduino

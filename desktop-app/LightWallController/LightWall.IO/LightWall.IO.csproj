@@ -3,11 +3,8 @@
   <!--
     LightWall.IO
 
-    Reserved for talking to the outside world:
-    - serial communication with the Arduino
-    - Windows system audio capture
-
-    Currently empty. This is the next layer to be built.
+    Talking to the outside world: serial communication with the Arduino, and
+    later Windows system audio capture.
 
     Shared settings (ImplicitUsings, Nullable) come from Directory.Build.props
     in the parent folder.
@@ -16,6 +13,14 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Serial port support is not part of the base .NET runtime - it lives in a
+      separate package, because most programs never need it.
+    -->
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\LightWall.Core\LightWall.Core.csproj" />

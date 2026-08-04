@@ -57,7 +57,7 @@ dotnet publish "desktop-app/LightWallController/LightWall.App" -p:PublishProfile
 |---|---|---|
 | `LightWall.Core` | `net10.0` | Wall model, effects, engine, clock, transport, packet format, virtual wall. No UI references. |
 | `LightWall.App` | `net10.0-windows` | WPF simulator window. The only project that knows about WPF. |
-| `LightWall.IO` | `net10.0` | Real hardware and system I/O — serial, audio. **Currently empty.** |
+| `LightWall.IO` | `net10.0` | Real hardware and system I/O. `SerialTransport` done; audio not started. |
 | `LightWall.Tests` | `net10.0` | xUnit tests for Core. 115 of them. |
 
 Shared build settings live in
@@ -175,10 +175,8 @@ trouble.
 
 Do not add these speculatively:
 
-- Serial transport (goes in `LightWall.IO`, implementing `IWallTransport`). When
-  it is written it must handle the port-open reset: opening a serial connection
-  to a Mega toggles DTR and reboots the board, so roughly the first 1.5–2
-  seconds of anything sent is swallowed by the bootloader.
+- UI for selecting a serial port. `SerialTransport` exists and works, but the app
+  still attaches the loopback at startup with no way to choose otherwise.
 - Arduino firmware (only a README exists so far)
 - Audio capture, analysis, beat detection
 - Per-effect parameter systems — `EffectParameters` is a single shared object on
