@@ -271,6 +271,84 @@
                 </Grid>
 
                 <!--
+                    Serial connection.
+
+                    Chooses which wall is being driven. The virtual wall runs
+                    always; connecting a port adds the real one alongside it
+                    rather than replacing it, so both stay visible.
+
+                    That matters when something looks wrong on the physical wall:
+                    if the virtual wall shows the same thing, the fault is
+                    upstream in the app; if the virtual wall looks right, the
+                    fault is in the cable, the firmware or the wiring.
+                -->
+                <TextBlock Text="Arduino Connection"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,0,0,4"/>
+
+                <TextBlock Text="The virtual wall always runs. Connecting a port drives the real wall as well."
+                           FontSize="12"
+                           Foreground="#999999"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
+
+                <WrapPanel Margin="0,0,0,8">
+                    <ComboBox x:Name="SerialPortComboBox"
+                              Width="150"
+                              Height="30"
+                              Margin="0,0,10,8"
+                              ToolTip="Serial ports found on this computer. The Arduino is usually the highest-numbered one that appears when you plug it in."/>
+
+                    <Button Content="Refresh"
+                            Width="80"
+                            Height="30"
+                            Margin="0,0,10,8"
+                            ToolTip="Look for ports again, after plugging the Arduino in."
+                            Click="RefreshPortsButton_Click"/>
+
+                    <Button x:Name="ConnectButton"
+                            Content="Connect"
+                            Width="100"
+                            Height="30"
+                            Margin="0,0,10,8"
+                            ToolTip="Open the selected port and start driving the real wall."
+                            Click="ConnectButton_Click"/>
+
+                    <Button x:Name="DisconnectButton"
+                            Content="Disconnect"
+                            Width="100"
+                            Height="30"
+                            Margin="0,0,10,8"
+                            IsEnabled="False"
+                            ToolTip="Close the port. The wall is blanked first rather than being left frozen."
+                            Click="DisconnectButton_Click"/>
+                </WrapPanel>
+
+                <!--
+                    Connection status.
+
+                    The "waiting for board" state matters more than it looks.
+                    Opening a serial port resets the Arduino, and its bootloader
+                    swallows everything for about two seconds afterwards. Without
+                    something saying so, those two seconds are indistinguishable
+                    from a completely dead connection.
+                -->
+                <Border Background="#232323"
+                        BorderBrush="#444444"
+                        BorderThickness="1"
+                        Padding="10,8"
+                        Margin="0,0,0,16">
+                    <TextBlock x:Name="SerialStatusTextBlock"
+                               Text="Not connected — virtual wall only"
+                               FontSize="12"
+                               FontFamily="Consolas"
+                               Foreground="#999999"
+                               TextWrapping="Wrap"/>
+                </Border>
+
+                <!--
                     Hardware check.
 
                     Lights one bulb at a time so the wiring can be confirmed

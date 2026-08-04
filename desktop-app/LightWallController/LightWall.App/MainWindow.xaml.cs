@@ -7,6 +7,7 @@ using LightWall.Core.Engine;
 using LightWall.Core.Models;
 using LightWall.Core.Serialization;
 using LightWall.Core.Transport;
+using LightWall.IO.Serial;
 
 namespace LightWall.App
 {
@@ -111,6 +112,18 @@ namespace LightWall.App
         /// what we believe, which needs the actual wall.
         /// </summary>
         private readonly LoopbackTransport _loopback = new();
+
+        /// <summary>
+        /// The real serial connection, or null when only the virtual wall is
+        /// running.
+        ///
+        /// Kept as a field rather than being read back from the output service
+        /// because the status readout needs its specifics — whether the board is
+        /// still restarting, how many packets got through, what went wrong — and
+        /// those live on SerialTransport rather than on the interface it
+        /// implements.
+        /// </summary>
+        private SerialTransport? _serial;
 
         /// <summary>
         /// Samples the clock 30 times a second and sends packets to whatever
@@ -252,6 +265,8 @@ namespace LightWall.App
             ApplyFaultSettings();
             UpdateControlLabels();
             UpdateStatusText();
+
+            RefreshSerialPorts();
 
             _clock.Start();
 
@@ -648,6 +663,7 @@ namespace LightWall.App
             _loopback.UpdateWatchdog();
 
             UpdateOutputStatsText();
+            UpdateSerialStatusText();
         }
 
         /// <summary>
@@ -701,6 +717,147 @@ namespace LightWall.App
 
                 engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value;
             });
+        }
+
+        /// <summary>
+        /// Re-reads the list of serial ports.
+        ///
+        /// Needed because ports appear and disappear as things are plugged in.
+        /// The Arduino will not be listed until its cable is connected.
+        /// </summary>
+        private void RefreshPortsButton_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshSerialPorts();
+        }
+
+        /// <summary>
+        /// Fills the port dropdown, keeping the current selection if it is still
+        /// present.
+        /// </summary>
+        private void RefreshSerialPorts()
+        {
+            string? previouslySelected = SerialPortComboBox.SelectedItem as string;
+
+            string[] ports = SerialPortLister.GetAvailablePortNames();
+
+            SerialPortComboBox.ItemsSource = ports;
+
+            if (previouslySelected is not null && ports.Contains(previouslySelected))
+            {
+                SerialPortComboBox.SelectedItem = previouslySelected;
+            }
+            else if (ports.Length > 0)
+            {
+                // Default to the highest-numbered port, because a freshly
+                // plugged-in Arduino usually takes the next free number and so
+                // tends to be last in the list.
+                SerialPortComboBox.SelectedItem = ports[^1];
+            }
+        }
+
+        /// <summary>
+        /// Opens the selected port and starts driving the real wall.
+        ///
+        /// The virtual wall is kept running alongside it rather than replaced,
+        /// which is what makes it possible to tell an app problem from a
+        /// hardware problem at a glance.
+        /// </summary>
+        private void ConnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (SerialPortComboBox.SelectedItem is not string portName)
+            {
+                SerialStatusTextBlock.Text = "Choose a port first. Press Refresh if the list is empty.";
+                return;
+            }
+
+            try
+            {
+                var serial = new SerialTransport(portName);
+
+                // Both transports, so both walls stay live.
+                _output.Attach(new CompositeTransport(_loopback, serial));
+
+                _serial = serial;
+
+                ConnectButton.IsEnabled = false;
+                DisconnectButton.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                // The usual causes are that the port has vanished, or that
+                // something else already has it open — very often the Arduino
+                // IDE's serial monitor, which is worth checking first.
+                _serial = null;
+                SerialStatusTextBlock.Text =
+                    $"Could not open {portName}.{Environment.NewLine}{ex.Message}" +
+                    $"{Environment.NewLine}If the Arduino IDE's serial monitor is open, close it and try again.";
+
+                // Fall back to the virtual wall alone, so the app keeps working.
+                _output.Attach(_loopback);
+            }
+
+            UpdateSerialStatusText();
+        }
+
+        /// <summary>
+        /// Closes the port and returns to driving the virtual wall alone.
+        ///
+        /// The output service sends a blackout before disconnecting, so the real
+        /// wall goes dark rather than being left frozen on whatever frame
+        /// happened to be showing.
+        /// </summary>
+        private void DisconnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            _output.Attach(_loopback);
+            _serial = null;
+
+            ConnectButton.IsEnabled = true;
+            DisconnectButton.IsEnabled = false;
+
+            UpdateSerialStatusText();
+        }
+
+        /// <summary>
+        /// Describes the state of the serial connection.
+        ///
+        /// The "waiting for board" state is the one that earns its keep. Opening
+        /// a port resets the Arduino, and for the couple of seconds afterwards
+        /// its bootloader ignores everything sent. Without this line, those
+        /// seconds look exactly like a dead connection, and the natural reaction
+        /// is to start debugging something that is working fine.
+        /// </summary>
+        private void UpdateSerialStatusText()
+        {
+            if (_serial is null)
+            {
+                SerialStatusTextBlock.Text = "Not connected — virtual wall only";
+                return;
+            }
+
+            if (_serial.LastError is not null)
+            {
+                SerialStatusTextBlock.Text = _serial.LastError;
+                return;
+            }
+
+            if (!_serial.IsConnected)
+            {
+                SerialStatusTextBlock.Text = $"{_serial.PortName} closed";
+                return;
+            }
+
+            if (_serial.IsWaitingForBoardReset)
+            {
+                SerialStatusTextBlock.Text =
+                    $"{_serial.PortName} open — waiting for the board to restart..." +
+                    $"{Environment.NewLine}(opening the port resets the Arduino; this is normal)";
+                return;
+            }
+
+            SerialStatusTextBlock.Text =
+                $"{_serial.PortName} connected at {_serial.BaudRate} baud{Environment.NewLine}" +
+                $"{_serial.PacketsWritten} packets sent, " +
+                $"{_serial.PacketsDroppedDuringReset} dropped while the board restarted";
         }
 
         /// <summary>
