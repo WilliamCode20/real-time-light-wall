@@ -1,182 +1,103 @@
 # Next Steps
 
-## Completed Since the Last Handoff
+## Where the project stands
 
-The refactor that was flagged as "the next architecture layer" is done:
+The full chain works: **music → capture → analysis → engine → packets → firmware
+→ real bulbs.** The hardware mapping is verified against the physical wall. 294
+tests pass.
 
-- all visuals unified behind a single `IWallEffect` interface
-- effects driven by elapsed time rather than a frame counter
-- playback and wall state moved out of `MainWindow` into `WallEngine`
-- `EffectCatalog` added; the window builds its buttons from it
-- protocol hardened: two sync bytes, command enum, blackout and heartbeat,
-  unpacking and validation
-- 80 tests added
-- rendering performance fixed (frozen brushes, change detection, proper render
-  loop)
-- two-column layout so the wall is actually visible
-- self-contained publish profile for handing the app to a non-developer
+Everything below is improvement rather than missing foundation.
 
-## Also Completed
+## Immediate: tuning, not building
 
-The output pipeline, and the virtual wall it feeds:
+These need someone listening to real music, which is the one thing no test can
+substitute for.
 
-- `VirtualWallReceiver` — software model of the firmware's receiving logic, with
-  fault-injection tests
-- `WallShowClock` — engine moved onto its own background thread, so the wall's
-  timing no longer depends on the window
-- `IWallTransport` + `LoopbackTransport` — transport abstraction with a virtual
-  wall behind it, able to drop and corrupt bytes on purpose
-- `WallOutputService` — rate-limited to 30 packets a second, latest-frame-wins,
-  blackout on detach
-- 115 tests
+### 1. Onset sensitivity
 
-Also done: both walls are now shown in the window, with fault-injection sliders.
+`OnsetDetector.Sensitivity` is 1.4 and `MinimumSecondsBetweenBeats` is 0.12.
+Both are reasoned defaults that nobody has dialled in by ear.
 
-Also done: `SerialTransport` and `SerialPortLister` in `LightWall.IO`, including
-the port-open reset handling.
+Use **Beat Flash** to judge:
 
-## Current Priority
+- flashing too often → raise Sensitivity
+- missing obvious hits → lower it
+- double-flashing on one hit → raise the minimum gap
 
-### 1. A minimal hardware test path in the UI
+**Tempo Pulse** is the cross-check: if it locks on well while Beat Flash looks
+wrong, the problem is sensitivity rather than the tempo estimate.
 
-Added conservatively, not as a UI overhaul:
+### 2. Audio smoothing and sensitivity defaults
 
-- a dropdown listing ports from `SerialPortLister`, plus a refresh
-- connect / disconnect, switching `WallOutputService` between the loopback and a
-  `SerialTransport`
-- show `IsWaitingForBoardReset` while the board restarts, otherwise the first two
-  seconds look identical to a broken connection
-- show `LastError` when a connection fails
+The Smoothing slider (0.5) and Sensitivity slider (1.0) both default to guesses.
+Whatever values feel right in practice should become the defaults.
 
-Note that the virtual wall should keep running even when serial is attached — it
-is just as useful as a reference when the physical wall is doing something
-unexpected.
+### 3. Output rate
 
-### 2. Arduino firmware
+30 packets/second is the safe number and the largest single contributor to
+audio-to-light latency (~33 ms worst case). The original show demonstrated ~15 ms
+dwell times, so 60 Hz is within proven territory and would halve that. Worth
+deciding deliberately once the delay has been felt on the real wall — the
+trade-off is relay wear.
 
-Translate `VirtualWallReceiver` into C++. It was written specifically for this:
-byte at a time, tiny fixed buffer, no allocation — the same shape an Arduino
-needs. Its tests already prove the logic, so this is a translation rather than a
-fresh design.
+## Next features, roughly in order
 
-Two details the tests pinned down and the firmware must reproduce:
+### 4. More beat-driven effects
 
-- On seeing a second `0xAA` while waiting for `0x55`, **stay put**. Restarting
-  the hunt eats the real sync byte of an `AA AA 55 ...` sequence and silently
-  loses a frame.
-- A lone `0xAA` is not proof a packet is starting. It is an ordinary bulb pattern
-  that appears in payloads regularly, which is why the checksum still matters.
+`AudioFeatures.BeatPhase` (0→1 across each beat) is exposed and unused. Effects
+that sweep, fade or travel *across* a beat rather than blinking on it — a meteor
+crossing the wall exactly once per bar, a pattern that changes on the downbeat.
 
-**Include the watchdog.** If no valid packet arrives for a set period, the
-firmware blanks the wall by itself. For something switching mains, "the app
-crashed and the wall froze mid-frame" should be a designed behaviour rather than
-an accident.
+Bar tracking (counting beats into groups of four) would open up more, and is a
+small addition on top of `BeatClock`.
 
-### 5. Bulb identification mode
+### 5. Scene control for a DJ
 
-Walk bulbs 0 to 34 one at a time with an on-screen readout of which index is lit.
-Build this before going out to the wall — it turns the mapping check into a few
-minutes of confirming rather than an afternoon of guessing in the heat.
+The real product goal. Which effects respond to which bands, how strongly, what
+can be adjusted live, and how a non-programmer picks between them.
 
-This is the one thing no amount of virtual work can settle: whether bulb 0 really
-is the top-left one, and whether the wall is mirrored or rotated.
+This is where `EffectParameters` finally needs to become a per-effect system
+rather than one shared object.
 
-### 6. Validate end-to-end
+### 6. Smaller known gaps
 
-- static frames
-- mapping correctness (is bulb 0 really top-left?)
-- simple animations
-- update stability over a sustained period
-- confirm the practical maximum frame rate on real hardware
+- **Output counters never reset**, so they mix clean and faulty periods and
+  cannot be read as a delivery rate. A "reset counters" button beside the fault
+  sliders would fix it.
+- **No UI control for detaching output** — settable in code only.
+- **The Center X/Y offsets clip rather than wrap.** A wrap mode might be worth
+  offering.
+- **`EffectCatalog.Diagnostics`** exists as a separate list but the window still
+  renders it inline with the procedural animations.
 
-## After Serial Transport Works
+## Hardware follow-ups
 
-### 7. Audio capture — DONE
+- **Confirm the 5.5 mA figure** by measuring volts across one 270 Ω resistor with
+  that bulb lit (~0.72 V confirms it). This is a parallel measurement, so nothing
+  needs disconnecting.
+- **A driver stage** (five ULN2803A chips, eight channels each) would take the
+  Arduino out of the current budget entirely. Only worth it for a future
+  installation, not this one.
 
-WASAPI loopback capture, RMS/peak measurement, decibel mapping and attack/release
-smoothing, with a level meter in the interface. Nothing drives the wall from it
-yet, which is deliberate.
+## Guardrails
 
-### 8. Wire audio into the engine — DONE
+- One focused layer at a time
+- Keep the simulator working
+- Run `dotnet test` before committing
+- Keep commits granular with full explanations
 
-`AudioFeatures` reaches effects through `EffectContext`, and EQ Bumper follows
-the measured level. Verified against real audio playing.
+## Notes for future sessions
 
-### 9. Frequency bands — DONE
+Read `CLAUDE.md` first — build commands, protocol spec, hardware facts and the
+ten architectural rules.
 
-Seven bands, one per column, bass on the left. Each with its own automatic gain,
-which is what makes the treble columns usable. The FFT is written out in Core so
-the whole chain is testable without audio hardware.
+Preserve these:
 
-### 10. Onset and beat detection — DONE
-
-Spectral flux onset detection with a moving threshold, median-based tempo
-estimation with confidence, and a Beat Flash effect for judging it by eye.
-
-Still open here:
-
-- **Tuning against real music.** `OnsetDetector.Sensitivity` (1.4) and the
-  minimum gap (0.12 s) are reasoned defaults, not values anyone has dialled in
-  while listening. Beat Flash is the tool for that.
-- **Beat prediction.** Flashing happens on detection, so it inherits the full
-  latency budget. Using the tempo estimate to predict the *next* beat would let
-  effects land exactly on time. Deliberately not done yet, because a predicted
-  flash looks convincing whether or not detection works and would hide faults
-  during tuning. Worth adding once detection is trusted.
-- **Beat-driven effects beyond flashing** — pattern changes on the bar, sweeps
-  timed to the beat, and so on.
-
-### 11. Scene and mapping controls
-
-Which effects respond to which bands, how strongly, and what a DJ can adjust
-live. This is where `EffectParameters` will finally need to become a per-effect
-system rather than one shared object.
-
-## Known Smaller Items
-
-Not urgent, worth knowing:
-
-- `EffectParameters` is one shared object holding effect-specific settings. Fine
-  at one setting; wants to become a per-effect parameter system once several
-  effects have their own controls.
-- The Center X/Y offsets clip rather than wrap. A wrap mode might be worth adding
-  as an option.
-- `WallEngine` itself is still single-threaded and unaware of threads. That is
-  deliberate — `WallShowClock` owns it and is the only thing allowed to touch it.
-  Do not add locking inside the engine; go through the clock.
-- The output statistics never reset, so they mix clean and faulty periods
-  together and cannot be read as a delivery rate for either. A "reset counters"
-  button beside the fault sliders would make the numbers mean something.
-- There is no interface control for detaching output. It is settable in code.
-
-## Near-Term Guardrails
-
-Avoid doing several of these at once:
-
-- serial
-- audio
-- UI overhaul
-- major refactor
-
-Preferred pattern:
-
-- one focused layer at a time
-- keep the simulator working
-- keep commits small
-- run `dotnet test` before committing
-
-## Notes for Future Agent Sessions
-
-Read `CLAUDE.md` at the repository root first — it carries the build commands,
-the protocol specification and the architectural rules.
-
-Preserve these truths:
-
-- the simulator remains important
-- `WallFrame` remains the source of truth for a wall state
-- `WallEngine` remains the authority on what is currently displayed
-- effects stay time-driven and repeatable
-- the serialization format stays consistent unless intentionally revised, and
-  `PacketCommand` values are permanent once firmware ships
-- the desktop app is the main intelligence layer; the Arduino is an output target
-- comments are part of the deliverable in this repository
+- the simulator stays important; it is not scaffolding
+- `WallFrame` is the source of truth for a wall state, `WallEngine` for what is
+  displayed, `WallShowClock` for who may touch the engine
+- effects stay time-driven; audio reaches them only through `EffectContext`
+- all audio analysis stays in Core so it stays testable
+- `PacketCommand` values are permanent now firmware is deployed
+- comments are part of the deliverable, including the ones recording reasoning
+  that turned out wrong

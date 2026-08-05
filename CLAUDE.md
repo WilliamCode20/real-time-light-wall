@@ -4,12 +4,16 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-A Windows desktop app that will drive a physical 5x7 light wall (35 individually
-switched bulbs) in real time, eventually reacting to music playing on the
-computer. The app is the brain; an Arduino Mega 2560 is the output device.
+A Windows desktop app driving a physical 5x7 light wall (35 individually switched
+bulbs) in real time, reacting to music playing on the computer. The app is the
+brain; an Arduino Mega 2560 is the output device.
 
 The end goal is something a DJ or venue operator could be handed and use — not a
 developer tool.
+
+**The full chain works today**: music → capture → analysis → engine → packets →
+firmware → real bulbs. The hardware mapping has been verified against the
+physical wall.
 
 ## Working style for this repo
 
@@ -24,28 +28,26 @@ The repository owner is new to C#, .NET and WPF. That shapes how to work here:
 - **Prefer clarity over cleverness.** If a shorter expression needs a paragraph
   of explanation, write the longer obvious version instead.
 - Explain reasoning in replies rather than only stating conclusions.
+- **Record reasoning that turned out wrong.** Several comments explain a
+  plausible-sounding approach that failed and why. Those are deliberate — keep
+  them, and add to them.
+- Commits are granular, one layer each, with a full explanation in the body.
 
 ## Commands
-
-Build everything:
 
 ```bash
 dotnet build "desktop-app/LightWallController/LightWallController.slnx"
 ```
 
-Run the tests:
-
 ```bash
 dotnet test "desktop-app/LightWallController/LightWall.Tests/LightWall.Tests.csproj"
 ```
-
-Run the simulator:
 
 ```bash
 dotnet run --project "desktop-app/LightWallController/LightWall.App"
 ```
 
-Build a single self-contained .exe to hand to a non-developer:
+Single self-contained .exe for a non-developer:
 
 ```bash
 dotnet publish "desktop-app/LightWallController/LightWall.App" -p:PublishProfile=SelfContained
@@ -55,10 +57,10 @@ dotnet publish "desktop-app/LightWallController/LightWall.App" -p:PublishProfile
 
 | Project | Target | Purpose |
 |---|---|---|
-| `LightWall.Core` | `net10.0` | Wall model, effects, engine, clock, transport, packet format, virtual wall. No UI references. |
+| `LightWall.Core` | `net10.0` | Wall model, effects, engine, clock, transport, packet format, virtual wall, **all audio analysis**. No UI, no platform dependencies. |
 | `LightWall.App` | `net10.0-windows` | WPF simulator window. The only project that knows about WPF. |
-| `LightWall.IO` | `net10.0-windows` | Real hardware and system I/O. `SerialTransport` and `SystemAudioCapture` done. Windows-specific because WASAPI is. |
-| `LightWall.Tests` | `net10.0` | xUnit tests for Core. 115 of them. |
+| `LightWall.IO` | `net10.0-windows` | Real hardware and system I/O: `SerialTransport`, `SystemAudioCapture`. Windows-specific because WASAPI is. |
+| `LightWall.Tests` | `net10.0-windows` | xUnit tests. **294 of them.** Windows-targeted only because it references IO. |
 
 Shared build settings live in
 `desktop-app/LightWallController/Directory.Build.props`.
@@ -67,32 +69,35 @@ Shared build settings live in
 
 These are load-bearing. Breaking them causes real problems later.
 
-1. **`LightWall.Core` never references WPF.** It targets plain `net10.0`
-   specifically so this is impossible to do by accident. Logic that would still
-   make sense with no screen attached belongs in Core.
+1. **`LightWall.Core` never references WPF or any platform library.** It targets
+   plain `net10.0` specifically so this is impossible by accident. Logic that
+   would still make sense with no screen attached belongs in Core.
 
 2. **`WallEngine` is the single authority on what the wall shows.** The window
-   draws what the engine says; it does not decide anything itself. Do not
-   reintroduce wall state into the window.
+   draws what the engine says; it decides nothing itself.
 
    `WallShowClock` owns the engine and runs it on a background thread. Nothing
-   else touches the engine directly — go through `clock.Modify(...)` to change
-   it and `clock.CopyCurrentFrameTo(...)` to read it. Do not add locking inside
-   `WallEngine` itself; it is deliberately a simple single-threaded class.
+   else touches the engine directly — go through `clock.Modify(...)` to change it
+   and `clock.CopyCurrentFrameTo(...)` to read it. Do not add locking inside
+   `WallEngine`; it is deliberately a simple single-threaded class.
 
 3. **Effects are driven by time, not frame count.** `EffectContext.TimeSeconds`
-   is the input. This decouples animation pace from redraw rate, lets the screen
-   and the hardware run at different rates, and is a prerequisite for beat sync.
+   is the input. This decouples animation pace from redraw rate and lets the
+   screen and the hardware run at different rates.
 
-4. **Effects must be repeatable.** The same time value must produce the same
+4. **Effects should be repeatable.** The same time value should produce the same
    frame. Random effects use `EffectContext.CreateRandomForStep(step)` rather
    than a shared generator — otherwise they flicker, because the screen redraws
-   far more often than they change. There are tests enforcing this across the
-   whole catalog.
+   far more often than they change. Tests enforce this across the whole catalog.
+
+   *One deliberate exception:* `EqBumperEffect` holds a `BarHeightSmoother` and
+   so depends on history. Audio-reactive effects were never pure functions of
+   time anyway. What the rule really protects — the same question asked twice
+   giving the same answer — still holds, because the smoother settles in one step.
 
 5. **Effects must clear the frame they are given.** The engine reuses one frame
-   object rather than allocating one per frame, so it arrives holding the
-   previous contents. There is a test enforcing this too.
+   object rather than allocating per frame, so it arrives holding the previous
+   contents. There is a test enforcing this.
 
 6. **Adding an effect means adding one entry to `EffectCatalog`.** The window
    builds its buttons from the catalog. Do not hard-code effect buttons in XAML.
@@ -103,100 +108,152 @@ These are load-bearing. Breaking them causes real problems later.
    takes no lock at all: `AudioFeatures` snapshots are immutable and swapped by
    reference, so a reader sees one complete moment or the previous one.
 
-9. **All audio analysis lives in Core, not IO.** `AudioAnalyser` is the front
-   door. Everything it does is arithmetic, so it can be tested against signals
-   whose answers are known in advance — feed in a 100 Hz tone, check the bass
-   band lights and the treble does not. `LightWall.IO` only asks Windows for
-   buffers and hands them over. Do not move analysis out to IO for convenience;
-   it becomes untestable the moment it needs a sound card.
-
-10. **Effects read audio through `EffectContext`, never from a device.** Adding
-    an effect touches no audio code; adding a measurement touches no effect
-    code. This is what keeps both sides manageable as they grow.
-
 8. **Output is rate-limited and never queued.** The wall is fed at 30 packets a
-   second regardless of how fast the engine ticks, and frames generated in
-   between are skipped rather than stored. Queueing would make the wall lag
-   further behind reality over time; dropping keeps it at worst one frame late.
+   second regardless of engine tick rate; frames generated in between are skipped
+   rather than stored. Queueing would make the wall lag further behind reality
+   over time; dropping keeps it at worst one frame late.
 
    This is also the single largest controllable contributor to audio-to-light
    latency (~33 ms worst case). Raising it to 60 Hz is within what the original
    show demonstrated, if latency ever matters more than relay wear.
+
+9. **All audio analysis lives in Core, not IO.** `AudioAnalyser` is the front
+   door. Everything it does is arithmetic, so it is testable against signals whose
+   answers are known in advance — feed in a 100 Hz tone, check the bass band
+   lights and the treble does not. `LightWall.IO` only asks Windows for buffers
+   and hands them over. Do not move analysis to IO for convenience; it becomes
+   untestable the moment it needs a sound card.
+
+10. **Effects read audio through `EffectContext`, never from a device.** Adding
+    an effect touches no audio code; adding a measurement touches no effect code.
 
 ## The output pipeline
 
 ```
 WallShowClock  --> MainWindow          (draws, ~60 Hz)
                --> WallOutputService   (samples 30 Hz, builds packets)
-                        --> LoopbackTransport  (virtual wall, works today)
-                        --> SerialTransport    (not yet written)
+                        --> CompositeTransport
+                                 --> LoopbackTransport  (virtual wall, always on)
+                                 --> SerialTransport    (real wall, when connected)
 ```
 
-`VirtualWallReceiver` is a software model of the firmware's receiving half. It is
-both the thing that makes hardware-free development possible and the reference
-the C++ firmware should be translated from — it is written byte-at-a-time with a
-fixed buffer and no allocation, deliberately in the shape an Arduino needs.
+Connecting a serial port **adds** the real wall alongside the virtual one rather
+than replacing it. That is the project's most useful diagnostic: if both walls
+agree and the hardware disagrees, the fault is wiring, firmware or a relay; if
+the virtual wall is already wrong, the fault is upstream and no cable is involved.
+
+`VirtualWallReceiver` is a software model of the firmware's receiving half — both
+what makes hardware-free development possible and the reference the C++ firmware
+was translated from. Written byte-at-a-time with a fixed buffer and no allocation,
+deliberately in the shape an Arduino needs.
 
 `LoopbackTransport` can drop and corrupt bytes on purpose via
-`ByteDropProbability` and `ByteCorruptionProbability`. Use it when changing
-anything in the receive path.
+`ByteDropProbability` and `ByteCorruptionProbability`, exposed as UI sliders. Use
+it when changing anything in the receive path.
+
+## The audio pipeline
+
+```
+SystemAudioCapture (IO, WASAPI loopback)
+        --> AudioAnalyser (Core) — the single front door
+                --> AudioSampleMath      RMS, peak, decibel mapping
+                --> AudioLevelTracker    fast attack / slow release
+                --> AudioGainController  volume independence, noise gate
+                --> SpectrumAnalyser     FFT into 7 bands, one per column
+                --> OnsetDetector        spectral flux, moving threshold
+                --> TempoEstimator       median of gaps, confidence
+                --> BeatClock            metronome locked to that tempo
+        --> AudioFeatures (immutable snapshot)
+                --> WallShowClock --> WallEngine --> EffectContext --> effects
+```
+
+Non-obvious decisions worth not undoing:
+
+- **Decibel mapping.** Hearing is logarithmic; music sits at ~0.05–0.2 RMS.
+  Driving anything from that directly pins it near the bottom of its range.
+- **Fast attack, slow release** rather than averaging. Averaging blunts the drum
+  hit as much as the jitter, and the hit is the part worth showing.
+- **Per-band automatic gain.** Bass carries ~100× the energy of treble; against a
+  shared reference the treble columns would never move.
+- **Band strength sums squares, not averages.** Averaging divided a hi-hat
+  occupying 2 of 200 bins into nothing and the treble columns read exactly zero.
+- **Silence must be detected explicitly.** Windows sends *no buffers* when nothing
+  plays, rather than sending zeros.
+- **Beat detection uses raw band strengths**, not smoothed ones — smoothing
+  rounds off exactly the sharp rise an onset consists of.
+- **Tempo is held through quiet passages** (30 s) while *confidence* fades. An
+  earlier version wiped it after 3 s, which erased the estimate during exactly
+  the breakdowns where holding the beat matters most.
 
 ## Serial protocol
 
 Defined in `LightWall.Core/Serialization/WallFrameSerializer.cs`, which carries
-the full specification in its comments. Summary:
+the full specification. Summary:
 
 - Fixed **9-byte** packets: `AA 55 <command> <5 payload bytes> <checksum>`
 - Checksum is XOR of the command byte and the five payload bytes
 - 35 bulbs, one bit each, **row-major**, packed **least-significant-bit first**
-- Bulb number `N` = `row * 7 + column`, which matches `allLights[N]` in the
-  original hand-written sketch exactly
+- Bulb `N` = `row * 7 + column`, matching `allLights[N]` in the original sketch
 
 Two things to be careful about:
 
-- **Two sync bytes, not one.** `0xAA` alone is a perfectly ordinary bulb pattern
-  and appears in payloads regularly. A receiver must never treat a lone `0xAA` as
-  proof a packet is starting, and must still validate the checksum.
+- **Two sync bytes, not one.** `0xAA` alone is an ordinary bulb pattern and
+  appears in payloads regularly. A receiver must never treat a lone `0xAA` as
+  proof a packet is starting, and must still validate the checksum. Also: on a
+  second `0xAA` while waiting for `0x55`, **stay put** — restarting the hunt eats
+  the real sync byte of an `AA AA 55 ...` sequence and silently drops a frame.
 - **Command numbers are permanent.** Once firmware is deployed, existing values
   in `PacketCommand` must never be reassigned.
 
 ## Hardware facts
 
-Confirmed from the original working sketch in `docs/OLD_ARDUINO_CODE/`:
+**All verified against the physical wall on 2026-08-04.** Bulbs light top-left to
+bottom-right in the expected order; the mapping is settled.
 
-- Pin map, row-major:
+- Pin map, row-major (`WallHardwareMap`):
   ```
-  Row 0:  2,  3,  4,  5,  6,  7,  8
-  Row 1:  9, 10, 11, 12, 13, 22, 23
-  Row 2: 24, 25, 26, 27, 28, 29, 30
-  Row 3: 31, 32, 33, 34, 35, 36, 37
-  Row 4: 38, 39, 40, 41, 42, 43, 44
+  Row A:  2,  3,  4,  5,  6,  7,  8
+  Row B:  9, 10, 11, 12, 13, 22, 23
+  Row C: 24, 25, 26, 27, 28, 29, 30
+  Row D: 31, 32, 33, 34, 35, 36, 37
+  Row E: 38, 39, 40, 41, 42, 43, 44
   ```
-- **Active HIGH** (`#define PIX_ON HIGH`) — the SSR control is non-inverting
-- Serial was never used by the old sketch, so the port is fully free
-- No PWM anywhere; the wall is strictly ON/OFF
-- `analogRead(0)` was used as a noise source for `randomSeed`
+- **Relays are labelled A1–E7** in the enclosure: letter = row, number = column
+  from 1. Matches the original sketch's own convention. Relay `C4` = bulb 17 =
+  pin 27. Note they are *not* arranged in label order in the box.
+- **Active HIGH** — SSR control is non-inverting
+- **No driver stage.** Relays are switched straight from the digital pins through
+  270 Ω resistors, with a shared ground back to one Arduino GND pin. Nothing is
+  connected to 5V or 3.3V.
+- **~5.5 mA per channel, ~192 mA with all 35 lit** — just under the ATmega2560's
+  200 mA absolute maximum. Fine in bursts, as the original show proved. **Avoid
+  effects that hold all 35 on for minutes**, and mention the margin if one is
+  proposed. Do not raise it as an alarm; the installation has worked this way for
+  years.
+- Arduino powered from the **barrel jack**; the **USB port is free** for serial
+- Bulbs are LEDs and cut near-instantly (a few ms of fade)
+- **Pin 13 drives a bulb** as well as being the built-in LED — never use it for
+  status blinking
 
-**Switching speed.** The old show reliably used dwell times down to ~15 ms, with
-most effects in the 30–80 ms range, and it ran correctly. So roughly 30 updates
-per second is a comfortable ceiling for the hardware, and 60 is about at the
-proven edge. The simulator redraws at 60 fps, but the serial layer should send at
-its own slower, rate-limited pace rather than forwarding every drawn frame.
+**Switching speed.** The old show used dwell times down to ~15 ms and ran
+correctly, so ~30 updates/second is comfortable and 60 is about at the proven
+edge.
 
-Bulbs are LEDs. Arduino pins reach the SSRs via a breadboard with no known
-intermediate driver stage. The original installation runs all 35 outputs without
-trouble.
+**Port-open reset.** Opening a serial port toggles DTR, which reboots the Mega.
+Its bootloader swallows everything for ~2 seconds. `SerialTransport` handles this
+by discarding packets during a settle window rather than blocking `Connect`.
 
 ## Things deliberately not built yet
 
 Do not add these speculatively:
 
-- UI for selecting a serial port. `SerialTransport` exists and works, but the app
-  still attaches the loopback at startup with no way to choose otherwise.
-- Arduino firmware (only a README exists so far)
-- Audio capture, analysis, beat detection
-- Per-effect parameter systems — `EffectParameters` is a single shared object on
-  purpose while there is only one effect-specific setting
-- Brightness or dimming — the relays are ON/OFF only. If it ever became
-  desirable, `SetCell(row, column, bool)` can stay as an overload so existing
-  effects keep working.
+- **Beat prediction for effects other than Tempo Pulse.** Beat Flash fires on
+  detection on purpose — a predicted flash looks convincing whether or not
+  detection works, hiding the faults it exists to reveal.
+- **Per-effect parameter systems.** `EffectParameters` is one shared object while
+  there are only two effect-specific settings. Revisit when several effects have
+  their own controls.
+- **Brightness or dimming.** The relays are zero-cross SSRs and strictly ON/OFF.
+  If it ever became desirable, `SetCell(row, column, bool)` can stay as an
+  overload so existing effects keep working.
+- **Scene/preset saving, MIDI, DMX, network control.** None are requested.
