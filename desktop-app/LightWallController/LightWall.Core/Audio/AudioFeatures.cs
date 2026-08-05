@@ -59,8 +59,14 @@ namespace LightWall.Core.Audio
             double secondsSinceBeat = NoBeatYet,
             int beatCount = 0,
             double tempoBpm = 0.0,
-            double tempoConfidence = 0.0)
+            double tempoConfidence = 0.0,
+            double secondsSincePulse = NoBeatYet,
+            int pulseCount = 0,
+            double beatPhase = 0.0)
         {
+            SecondsSincePulse = secondsSincePulse;
+            PulseCount = pulseCount;
+            BeatPhase = beatPhase;
             Rms = rms;
             Peak = peak;
             Level = level;
@@ -204,6 +210,35 @@ namespace LightWall.Core.Audio
         /// what it saw last time.
         /// </summary>
         public int BeatCount { get; }
+
+        /// <summary>
+        /// How long ago the metronome last struck, in seconds.
+        ///
+        /// THE ONE FOR EFFECTS THAT SHOULD KEEP TIME THROUGH QUIET PASSAGES.
+        ///
+        /// Unlike SecondsSinceBeat, this does not depend on anything being
+        /// played. Once the tempo is known the metronome keeps counting, so a
+        /// breakdown with nothing but a pad still pulses in time.
+        ///
+        /// The trade is honesty: this can be wrong in a way SecondsSinceBeat
+        /// cannot, because it is a prediction rather than an observation. If the
+        /// tempo estimate is off, this drifts.
+        /// </summary>
+        public double SecondsSincePulse { get; }
+
+        /// <summary>
+        /// How many metronome pulses have happened since counting began.
+        /// </summary>
+        public int PulseCount { get; }
+
+        /// <summary>
+        /// How far through the current beat, from 0 (just landed) to 1 (the next
+        /// is due).
+        ///
+        /// For effects that want to sweep, fade or travel across a beat rather
+        /// than merely blink on it.
+        /// </summary>
+        public double BeatPhase { get; }
 
         /// <summary>
         /// The estimated tempo in beats per minute, or 0 when unknown.

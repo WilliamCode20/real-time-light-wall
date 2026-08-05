@@ -54,6 +54,18 @@ namespace LightWall.Core.Audio
         public TempoEstimator Tempo { get; } = new();
 
         /// <summary>
+        /// A metronome running at that tempo, which keeps counting through quiet
+        /// passages where there is nothing to detect.
+        /// </summary>
+        public BeatClock Clock { get; } = new();
+
+        /// <summary>When the metronome last struck.</summary>
+        private double _lastPulseSeconds = double.NegativeInfinity;
+
+        /// <summary>The pulse count at the previous update, to spot new ones.</summary>
+        private int _previousPulseCount;
+
+        /// <summary>
         /// Running total of time since capture started.
         ///
         /// Beat detection needs absolute times rather than gaps, because it
@@ -142,7 +154,9 @@ namespace LightWall.Core.Audio
             // Beat detection works from the RAW band strengths, not the smoothed
             // ones. Smoothing rounds off exactly the sharp rise an onset
             // consists of.
-            if (Onsets.Update(Spectrum.GetRawStrengths(), _elapsedSeconds))
+            bool beatHeard = Onsets.Update(Spectrum.GetRawStrengths(), _elapsedSeconds);
+
+            if (beatHeard)
             {
                 _lastBeatSeconds = _elapsedSeconds;
                 _beatCount++;
@@ -150,8 +164,31 @@ namespace LightWall.Core.Audio
             }
 
             Tempo.Update(_elapsedSeconds);
+            AdvanceClock(deltaSeconds, beatHeard);
 
             return Level.Update(rms, peak, deltaSeconds, bands, BuildBeatInfo());
+        }
+
+        /// <summary>
+        /// Moves the metronome on, and nudges it toward any beat just heard.
+        /// </summary>
+        private void AdvanceClock(double deltaSeconds, bool beatHeard)
+        {
+            Clock.Update(deltaSeconds, Tempo.Bpm);
+
+            if (beatHeard)
+            {
+                Clock.SyncToDetectedBeat();
+            }
+
+            // Notice when the metronome has struck, so the time since can be
+            // reported. Comparing counts rather than watching the phase, since
+            // an unusually long gap could carry the phase past 1 more than once.
+            if (Clock.PulseCount != _previousPulseCount)
+            {
+                _previousPulseCount = Clock.PulseCount;
+                _lastPulseSeconds = _elapsedSeconds;
+            }
         }
 
         /// <summary>
@@ -167,9 +204,12 @@ namespace LightWall.Core.Audio
 
             double[] bands = Spectrum.AnalyseSilence(deltaSeconds);
 
-            // Let the tempo estimate expire rather than leaving the last reading
-            // of a finished track sitting there looking current.
             Tempo.Update(_elapsedSeconds);
+
+            // The metronome keeps counting through silence on purpose. That is
+            // the whole point of having it: a breakdown with nothing playing
+            // should still pulse in time.
+            AdvanceClock(deltaSeconds, beatHeard: false);
 
             return Level.UpdateSilent(deltaSeconds, bands, BuildBeatInfo());
         }
@@ -183,7 +223,18 @@ namespace LightWall.Core.Audio
                 ? AudioFeatures.NoBeatYet
                 : _elapsedSeconds - _lastBeatSeconds;
 
-            return new BeatInfo(sinceBeat, _beatCount, Tempo.Bpm, Tempo.Confidence);
+            double sincePulse = double.IsNegativeInfinity(_lastPulseSeconds)
+                ? AudioFeatures.NoBeatYet
+                : _elapsedSeconds - _lastPulseSeconds;
+
+            return new BeatInfo(
+                sinceBeat,
+                _beatCount,
+                Tempo.Bpm,
+                Tempo.Confidence,
+                sincePulse,
+                Clock.PulseCount,
+                Clock.Phase);
         }
 
         /// <summary>
@@ -195,10 +246,13 @@ namespace LightWall.Core.Audio
             Spectrum.Reset();
             Onsets.Reset();
             Tempo.Reset();
+            Clock.Reset();
 
             _elapsedSeconds = 0.0;
             _lastBeatSeconds = double.NegativeInfinity;
             _beatCount = 0;
+            _lastPulseSeconds = double.NegativeInfinity;
+            _previousPulseCount = 0;
         }
     }
 }

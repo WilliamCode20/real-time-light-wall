@@ -134,7 +134,10 @@ namespace LightWall.Core.Audio
                 beatInfo.SecondsSinceBeat,
                 beatInfo.BeatCount,
                 beatInfo.TempoBpm,
-                beatInfo.TempoConfidence);
+                beatInfo.TempoConfidence,
+                beatInfo.SecondsSincePulse,
+                beatInfo.PulseCount,
+                beatInfo.BeatPhase);
         }
 
         /// <summary>
@@ -169,7 +172,10 @@ namespace LightWall.Core.Audio
                 beatInfo.SecondsSinceBeat,
                 beatInfo.BeatCount,
                 beatInfo.TempoBpm,
-                beatInfo.TempoConfidence);
+                beatInfo.TempoConfidence,
+                beatInfo.SecondsSincePulse,
+                beatInfo.PulseCount,
+                beatInfo.BeatPhase);
         }
 
         /// <summary>

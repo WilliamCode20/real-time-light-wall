@@ -267,6 +267,29 @@ It flashes on *detection* rather than on prediction from the tempo: a predicted
 flash would look convincing whether or not the detection underneath it worked,
 hiding the faults it exists to reveal.
 
+### Tempo Pulse — keeping time through the quiet
+
+`BeatClock` is a metronome running at the estimated tempo. Once the tempo is
+known it keeps counting whether or not anything is being played, so a breakdown
+still pulses in time. Detected beats keep it *aligned* rather than triggering it,
+nudging the phase a fraction of the way toward where it should be — snapping
+would lurch on every slightly-off detection, nudging shrugs those off while a run
+of them pulls it into line.
+
+**The tempo is held through quiet passages.** An earlier version wiped it after
+three seconds without beats, which meant exactly the passages where holding the
+beat matters most left the wall dead. It now holds for 30 seconds while
+*confidence* fades instead — so anything reading these values can tell "120,
+measured just now" from "still 120, but unconfirmed for a while".
+
+`BeatPhase` (0 to 1 through each beat) is exposed for effects that want to sweep
+or fade across a beat rather than merely blink on it.
+
+**Two beat modes, deliberately both.** Beat Flash fires on beats actually heard —
+honest, right for percussive material, but goes quiet when the music does. Tempo
+Pulse predicts — carries through gaps, but can drift confidently if the tempo
+estimate is wrong.
+
 ### Latency budget
 
 Roughly 60–90 ms worst case from sound to bulb:

@@ -118,26 +118,83 @@ namespace LightWall.Core.Audio
 
             Bpm = 0.0;
             Confidence = 0.0;
+            _measuredConfidence = 0.0;
         }
 
         /// <summary>
-        /// Drops the estimate when nothing has been heard for a while.
+        /// How long a quiet stretch can last before the tempo is given up on.
         ///
-        /// Without this, the last tempo of a finished track would sit on screen
-        /// indefinitely, which reads as a working estimate rather than a stale
-        /// one.
+        /// WHY THIS IS SO LONG
+        ///
+        /// Music goes quiet on purpose. A breakdown can run for eight bars with
+        /// nothing but a pad, and at 120 beats a minute that is sixteen seconds
+        /// with nothing for onset detection to find.
+        ///
+        /// An earlier version forgot the tempo after three seconds, which meant
+        /// exactly those passages - the ones where holding the beat matters most
+        /// - wiped the estimate and left the wall dead until the drums came back.
+        ///
+        /// Half a minute is longer than any breakdown and still short enough
+        /// that a genuinely finished track does not leave a stale number sitting
+        /// there looking current.
         /// </summary>
-        public void Update(double nowSeconds, double forgetAfterSeconds = 3.0)
+        public double ForgetAfterSeconds { get; set; } = 30.0;
+
+        /// <summary>
+        /// How long without beats before confidence starts falling.
+        /// </summary>
+        private const double ConfidenceHoldSeconds = 2.0;
+
+        /// <summary>
+        /// How long the fade from full confidence to none takes, once it starts.
+        /// </summary>
+        private const double ConfidenceFadeSeconds = 12.0;
+
+        /// <summary>
+        /// The confidence worked out from the beats themselves, before any
+        /// fading for silence is applied.
+        /// </summary>
+        private double _measuredConfidence;
+
+        /// <summary>
+        /// Keeps the estimate alive through quiet passages, and eventually
+        /// retires it.
+        ///
+        /// The tempo itself is HELD rather than dropped. A quiet section does
+        /// not mean the music changed speed - it means there is nothing to
+        /// measure - and the right answer is still the last one we worked out.
+        ///
+        /// Confidence falls instead. That way anything reading these values can
+        /// tell the difference between "120, measured just now" and "still 120,
+        /// but nothing has confirmed it for a while", which is exactly the
+        /// distinction worth knowing during a breakdown.
+        /// </summary>
+        public void Update(double nowSeconds)
         {
             if (_beatTimes.Count == 0)
             {
                 return;
             }
 
-            if (nowSeconds - _beatTimes[^1] > forgetAfterSeconds)
+            double quietFor = nowSeconds - _beatTimes[^1];
+
+            if (quietFor > ForgetAfterSeconds)
             {
                 Reset();
+                return;
             }
+
+            if (quietFor <= ConfidenceHoldSeconds)
+            {
+                Confidence = _measuredConfidence;
+                return;
+            }
+
+            // Fade confidence while keeping the tempo. The pulse carries on at
+            // the last known speed, which is what lets a breakdown stay in time.
+            double fade = 1.0 - ((quietFor - ConfidenceHoldSeconds) / ConfidenceFadeSeconds);
+
+            Confidence = _measuredConfidence * Math.Clamp(fade, 0.0, 1.0);
         }
 
         /// <summary>
@@ -194,7 +251,8 @@ namespace LightWall.Core.Audio
                 }
             }
 
-            Confidence = (double)agreeing / _intervals.Count;
+            _measuredConfidence = (double)agreeing / _intervals.Count;
+            Confidence = _measuredConfidence;
         }
 
         /// <summary>
