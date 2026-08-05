@@ -21,7 +21,15 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!--
+      Targets net10.0-windows only because it references LightWall.IO, which
+      became Windows-specific when audio capture arrived. A project can only
+      reference something at least as platform-specific as itself.
+
+      The tests themselves are almost entirely about LightWall.Core, which is
+      still plain net10.0 and knows nothing about Windows.
+    -->
+    <TargetFramework>net10.0-windows</TargetFramework>
 
     <!-- This project is a test harness, never something we ship or package. -->
     <IsPackable>false</IsPackable>

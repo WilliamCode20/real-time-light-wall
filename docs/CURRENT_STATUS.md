@@ -106,6 +106,40 @@ if a cable is plugged back in.
 `SerialPortLister` enumerates available ports, sorted numerically so COM9 comes
 before COM10.
 
+### Audio capture
+
+`SystemAudioCapture` in `LightWall.IO` uses WASAPI loopback to listen to what the
+computer is **playing**, not to a microphone. That means it hears the music
+exactly as mixed, with no room echo and no people talking, whatever program is
+producing the sound.
+
+The maths lives in Core so it can be tested without a sound card:
+
+- `AudioSampleMath` — RMS and peak from a sample buffer, plus decibel mapping
+- `AudioLevelTracker` — fast attack, slow release smoothing
+- `AudioFeatures` — an immutable snapshot, swapped in atomically so the audio
+  thread never shares mutable state with anything
+
+Two details that matter more than they look:
+
+**Decibel mapping.** Hearing is logarithmic, so ordinary music sits at an RMS of
+roughly 0.05 to 0.2. Driving anything from that directly would keep it pinned
+near the bottom of its range. Mapping through decibels with a -60 dB floor
+spreads real music across the whole range. Verified in practice: a ringtone reads
+about 0.6 on the meter rather than about 0.05.
+
+**Fast attack, slow release.** Rising almost instantly and falling gently is what
+turns a drum hit into a visible pulse instead of a one-frame flicker, while
+smoothing away the constant jitter between waves. Simple averaging would blunt
+the attack, which is the part worth showing.
+
+**Silence needs detecting explicitly.** Windows sends no buffers at all when
+nothing is playing, rather than sending zeros — so without a timeout the level
+would freeze wherever the music left it.
+
+Nothing drives the wall from audio yet. This layer only proves the capture and
+measurement are right.
+
 ### Serialization layer
 
 Fixed 9-byte packets: two sync bytes, command, five payload bytes, checksum.

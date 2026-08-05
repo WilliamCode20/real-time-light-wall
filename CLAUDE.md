@@ -57,7 +57,7 @@ dotnet publish "desktop-app/LightWallController/LightWall.App" -p:PublishProfile
 |---|---|---|
 | `LightWall.Core` | `net10.0` | Wall model, effects, engine, clock, transport, packet format, virtual wall. No UI references. |
 | `LightWall.App` | `net10.0-windows` | WPF simulator window. The only project that knows about WPF. |
-| `LightWall.IO` | `net10.0` | Real hardware and system I/O. `SerialTransport` done; audio not started. |
+| `LightWall.IO` | `net10.0-windows` | Real hardware and system I/O. `SerialTransport` and `SystemAudioCapture` done. Windows-specific because WASAPI is. |
 | `LightWall.Tests` | `net10.0` | xUnit tests for Core. 115 of them. |
 
 Shared build settings live in

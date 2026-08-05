@@ -4,14 +4,28 @@
     LightWall.IO
 
     Talking to the outside world: serial communication with the Arduino, and
-    later Windows system audio capture.
+    capturing the audio playing on this computer.
+
+    WHY THIS TARGETS net10.0-windows
+
+    It used to target plain net10.0, which is the more portable choice. Audio
+    capture forced the change: WASAPI, the Windows system audio interface, only
+    exists on Windows.
+
+    Being explicit about that is better than referencing a Windows-only library
+    from a portable project and suppressing the warnings that follow. This
+    project is the designated home for platform-specific work, so naming the
+    platform is honest rather than a compromise.
+
+    LightWall.Core deliberately stays on plain net10.0 and knows nothing about
+    Windows, audio hardware or serial ports.
 
     Shared settings (ImplicitUsings, Nullable) come from Directory.Build.props
     in the parent folder.
   -->
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +34,18 @@
       separate package, because most programs never need it.
     -->
     <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+
+    <!--
+      NAudio wraps the Windows audio interfaces in something usable from C#.
+
+      We need it for "WASAPI loopback" capture, which is the mechanism that
+      records what the computer is PLAYING rather than what a microphone hears.
+      That distinction is the whole point: the wall should react to the music
+      coming out of the speakers, regardless of what is producing it - Spotify,
+      a DJ program, a browser tab - and without picking up people talking in the
+      room.
+    -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
   <ItemGroup>

@@ -7,7 +7,10 @@ using LightWall.Core.Engine;
 using LightWall.Core.Models;
 using LightWall.Core.Serialization;
 using LightWall.Core.Transport;
+using LightWall.Core.Audio;
+using LightWall.IO.Audio;
 using LightWall.IO.Serial;
+using System.Windows.Shapes;
 
 namespace LightWall.App
 {
@@ -124,6 +127,14 @@ namespace LightWall.App
         /// implements.
         /// </summary>
         private SerialTransport? _serial;
+
+        /// <summary>
+        /// Listens to whatever this computer is playing.
+        ///
+        /// Created once and reused, since starting and stopping it is cheap
+        /// while creating it involves asking Windows about audio devices.
+        /// </summary>
+        private readonly SystemAudioCapture _audio = new();
 
         /// <summary>
         /// Samples the clock 30 times a second and sends packets to whatever
@@ -285,6 +296,7 @@ namespace LightWall.App
             // service send its blackout packet, before the window goes away.
             Closed += (_, _) =>
             {
+                _audio.Dispose();
                 _output.Dispose();
                 _clock.Dispose();
             };
@@ -490,6 +502,12 @@ namespace LightWall.App
 
             RenderWall();
             RenderVirtualWall();
+
+            // The meter is refreshed every frame rather than on the slower
+            // statistics schedule. A level meter that updates four times a
+            // second reads as broken; this needs to look continuous.
+            UpdateAudioReadout();
+
             UpdateFrameRateReadout(deltaSeconds);
             UpdateOutputStatsPeriodically(deltaSeconds);
         }
@@ -717,6 +735,96 @@ namespace LightWall.App
 
                 engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value;
             });
+        }
+
+        /// <summary>
+        /// Starts listening to the computer's audio output.
+        /// </summary>
+        private void AudioStartButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audio.Start();
+
+            AudioStartButton.IsEnabled = !_audio.IsRunning;
+            AudioStopButton.IsEnabled = _audio.IsRunning;
+
+            UpdateAudioReadout();
+        }
+
+        /// <summary>
+        /// Stops listening.
+        /// </summary>
+        private void AudioStopButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audio.Stop();
+
+            AudioStartButton.IsEnabled = true;
+            AudioStopButton.IsEnabled = false;
+
+            UpdateAudioReadout();
+        }
+
+        /// <summary>
+        /// Redraws the level meter and the audio status line.
+        ///
+        /// Called on every drawn frame, because a meter that updates a few times
+        /// a second looks broken rather than smooth. The work is trivial - two
+        /// widths and a short string.
+        /// </summary>
+        private void UpdateAudioReadout()
+        {
+            // Let the level decay when nothing is playing. Windows stops sending
+            // buffers entirely during silence rather than sending zeros, so
+            // without this nudge the meter would freeze wherever the music left
+            // it.
+            _audio.UpdateIdle();
+
+            AudioFeatures features = _audio.CurrentFeatures;
+
+            SetBarWidth(AudioLevelBar, features.Level);
+            SetBarWidth(AudioPeakBar, features.Peak);
+
+            if (_audio.LastError is not null)
+            {
+                AudioStatusTextBlock.Text = _audio.LastError;
+                return;
+            }
+
+            if (!_audio.IsRunning)
+            {
+                AudioStatusTextBlock.Text = "Not listening";
+                return;
+            }
+
+            AudioStatusTextBlock.Text =
+                $"Listening to {_audio.Name}{Environment.NewLine}" +
+                $"level {features.Level:F2}   rms {features.Rms:F3}   peak {features.Peak:F3}" +
+                (features.IsSilent ? "   [silent]" : string.Empty);
+        }
+
+        /// <summary>
+        /// Sets a meter bar to a fraction of the space available to it.
+        ///
+        /// The width is worked out from the parent's measured size rather than
+        /// from a fixed number, so the meter follows the window as it is
+        /// resized.
+        /// </summary>
+        private static void SetBarWidth(Rectangle bar, double fraction)
+        {
+            if (bar.Parent is not FrameworkElement track)
+            {
+                return;
+            }
+
+            double available = track.ActualWidth;
+
+            // Before the window has been laid out, the parent has no measured
+            // size yet and this would produce nonsense.
+            if (double.IsNaN(available) || available <= 0.0)
+            {
+                return;
+            }
+
+            bar.Width = Math.Clamp(fraction, 0.0, 1.0) * available;
         }
 
         /// <summary>

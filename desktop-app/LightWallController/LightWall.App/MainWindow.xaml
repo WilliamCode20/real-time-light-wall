@@ -271,6 +271,129 @@
                 </Grid>
 
                 <!--
+                    Audio capture.
+
+                    Listens to what this computer is PLAYING, not to a
+                    microphone. That means it hears the music exactly as mixed,
+                    with no room echo and no people talking, whatever program is
+                    producing the sound.
+
+                    Nothing drives the wall from this yet. This layer only proves
+                    the audio arrives and is measured correctly - which is worth
+                    settling on its own, so that when lights do start reacting,
+                    anything odd is in the mapping rather than here.
+                -->
+                <TextBlock Text="Audio Capture"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,0,0,4"/>
+
+                <TextBlock Text="Listens to what this computer is playing. Nothing drives the wall from it yet."
+                           FontSize="12"
+                           Foreground="#999999"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"/>
+
+                <WrapPanel Margin="0,0,0,10">
+                    <Button x:Name="AudioStartButton"
+                            Content="Start Listening"
+                            Width="130"
+                            Height="30"
+                            Margin="0,0,10,0"
+                            ToolTip="Begin capturing whatever this computer is playing."
+                            Click="AudioStartButton_Click"/>
+
+                    <Button x:Name="AudioStopButton"
+                            Content="Stop"
+                            Width="80"
+                            Height="30"
+                            IsEnabled="False"
+                            Click="AudioStopButton_Click"/>
+                </WrapPanel>
+
+                <!--
+                    The level meter.
+
+                    Two bars: the smoothed level that will eventually drive
+                    visuals, and the raw peak underneath it for comparison.
+
+                    Seeing both together is the useful part. The peak bar jumps
+                    around violently while the level bar moves the way a light
+                    should - which is the clearest demonstration of why the
+                    smoothing exists.
+                -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="Level"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="White"
+                               Margin="0,0,10,6"/>
+
+                    <Border Grid.Row="0"
+                            Grid.Column="1"
+                            Height="22"
+                            Background="#1A1A1A"
+                            BorderBrush="#444444"
+                            BorderThickness="1"
+                            Margin="0,0,0,6">
+                        <!--
+                            The bar is drawn by a Rectangle pinned to the left
+                            whose width the code-behind sets each frame.
+                        -->
+                        <Rectangle x:Name="AudioLevelBar"
+                                   HorizontalAlignment="Left"
+                                   Fill="#FFC700"
+                                   Width="0"/>
+                    </Border>
+
+                    <TextBlock Grid.Row="1"
+                               Grid.Column="0"
+                               Text="Peak"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="White"
+                               Margin="0,0,10,0"/>
+
+                    <Border Grid.Row="1"
+                            Grid.Column="1"
+                            Height="12"
+                            Background="#1A1A1A"
+                            BorderBrush="#444444"
+                            BorderThickness="1">
+                        <Rectangle x:Name="AudioPeakBar"
+                                   HorizontalAlignment="Left"
+                                   Fill="#6699FF"
+                                   Width="0"/>
+                    </Border>
+                </Grid>
+
+                <Border Background="#232323"
+                        BorderBrush="#444444"
+                        BorderThickness="1"
+                        Padding="10,8"
+                        Margin="0,0,0,16">
+                    <TextBlock x:Name="AudioStatusTextBlock"
+                               Text="Not listening"
+                               FontSize="12"
+                               FontFamily="Consolas"
+                               Foreground="#999999"
+                               TextWrapping="Wrap"/>
+                </Border>
+
+                <!--
                     Serial connection.
 
                     Chooses which wall is being driven. The virtual wall runs

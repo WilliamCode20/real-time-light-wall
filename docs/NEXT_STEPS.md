@@ -91,24 +91,48 @@ is the top-left one, and whether the wall is mirrored or rotated.
 
 ## After Serial Transport Works
 
-### 7. Audio capture only
+### 7. Audio capture — DONE
 
-Do not jump straight to reactive logic. First add Windows system audio capture
-(WASAPI loopback, most easily via NAudio) plus basic level meters for debugging.
+WASAPI loopback capture, RMS/peak measurement, decibel mapping and attack/release
+smoothing, with a level meter in the interface. Nothing drives the wall from it
+yet, which is deliberate.
 
-The threading pattern is already established: analysis will arrive on an audio
-callback thread and hand features to the engine the same way the window hands it
-slider changes — through the clock, under a lock, never by reaching in.
+### 8. Wire audio into the engine
 
-### 8. Audio feature extraction
+The next audio step, and a small one. `AudioFeatures` needs to reach
+`EffectContext` so effects can read the level the same way they read time.
 
-Overall level, bass/mid/treble energy, smoothing, onset detection, then beat
-confidence and BPM estimation.
+The route is already clear: `WallShowClock` holds a reference to the
+`IAudioSource`, reads `CurrentFeatures` when it builds each context, and the
+engine passes it through. No locking needed on the audio side — snapshots are
+immutable and swapped atomically.
 
-### 9. Map audio features to visuals
+Then make one effect react. **EQ Bumper is the obvious first candidate**: it
+already computes one height per column, and its comment has always said the sine
+wave is a placeholder for real measured energy. Swapping that for audio is the
+smallest possible change that produces a genuinely music-reactive wall.
 
-Only once the layers above work. `EffectContext` is the place audio features
-would arrive, so effects can read them the same way they read time today.
+### 9. Frequency bands
+
+One overall level cannot distinguish a bass drum from a hi-hat, and a wall that
+pulses uniformly to everything looks far less musical than one where the bottom
+row follows the kick.
+
+Needs an FFT — NAudio includes one. Split into bass, mid and treble, each with
+its own level tracker. Same testing approach: the band-splitting maths goes in
+Core with known inputs, the FFT plumbing stays in IO.
+
+### 10. Onset and beat detection
+
+Harder, and worth deferring until bands work. Onset detection (spotting a sudden
+rise in energy) gets most of the way to something that feels beat-driven. Full
+BPM estimation and phase tracking is a much larger problem and may not be needed.
+
+### 11. Scene and mapping controls
+
+Which effects respond to which bands, how strongly, and what a DJ can adjust
+live. This is where `EffectParameters` will finally need to become a per-effect
+system rather than one shared object.
 
 ## Known Smaller Items
 
