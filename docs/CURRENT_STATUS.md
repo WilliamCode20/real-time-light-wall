@@ -2,8 +2,11 @@
 
 ## Working Right Now
 
-The desktop WPF simulator runs, and the solution builds clean with 80 passing
-tests.
+The full chain works end to end: **music → capture → analysis → engine → packets
+→ firmware → real bulbs.** The hardware mapping was verified against the physical
+wall on 2026-08-04.
+
+The solution builds clean with 297 passing tests.
 
 ### Core wall model
 
@@ -22,10 +25,18 @@ Border, Cross, Sparkle
 
 **Frame-sequence animations (3):** Row Sweep, Border Pulse, Spiral
 
-**Procedural animations (3):** Meteor, Sparkle Storm, EQ Bumper
+**Procedural animations (5):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
+Tempo Pulse
 
-All 15 are registered in `EffectCatalog`, and the window builds its buttons from
+**Diagnostics (1):** Identify Bulb, which lights one bulb at a time so the pin
+map can be checked against the relay labels.
+
+All 18 are registered in `EffectCatalog`, and the window builds its buttons from
 that list. Adding an effect is a one-entry change.
+
+One gap: `Diagnostics` is a separate list in the catalog, but the window still
+renders it inline with the procedural animations rather than under its own
+heading.
 
 ### Playback engine
 
@@ -290,6 +301,47 @@ honest, right for percussive material, but goes quiet when the music does. Tempo
 Pulse predicts — carries through gaps, but can drift confidently if the tempo
 estimate is wrong.
 
+### Tuning beat detection by ear
+
+Two settings decide what counts as a beat, and both can only really be judged by
+listening: how big a jump has to be (`OnsetDetector.Sensitivity`, 1.4) and the
+shortest allowed gap between beats (`MinimumSecondsBetweenBeats`, 0.12).
+
+They are now sliders in the window — **Beat size** and **Beat gap** — rather than
+numbers in the code. That matters more than it sounds. Tuning by ear needs the
+change to happen while the music is still playing; with a rebuild in the loop you
+cannot compare a setting against the one you just left, and the defaults survive
+by default.
+
+Beside them is a **trigger meter**. The bar is how close the sound is right now
+to counting as a beat, and the red line is the point it has to reach. Missing a
+hit by a hair and missing it by miles look identical from the wall alone, and
+they call for opposite responses — one means nudge the slider, the other means
+the slider is the wrong thing to be touching.
+
+A **lamp** beside the meter lights on each detected beat. It is separate from the
+bar deliberately, for two reasons. Reaching the line is necessary but not
+sufficient — a beat also has to be on the way up and far enough after the last
+one — so a bar sitting above the line with no beats is the normal look of a
+sustained note rather than a fault. And the lamp works from the time since the
+last beat rather than a momentary value, so unlike the bar it cannot fall down
+the gap between two screen redraws.
+
+**One mistake worth recording.** The meter first stored readings exactly as they
+arrived, on the reasoning that the bar gets clamped when it is drawn anyway, so
+an oversized value could not hurt. It could. A hit landing after a quiet moment
+is measured against a very low threshold and reads not 2 or 3 but sometimes 20,
+and draining 20 units at 6 a second takes over three seconds — by which point
+several more beats have topped it up. The meter pinned at full the instant music
+started and stayed there. It was caught by playing something and watching, not by
+any test, and it is exactly the failure that mattered most: a meter that looks
+plausible while being wrong is worse than no meter, because it gets trusted.
+Readings are now capped at the top of the scale before being remembered.
+
+Verified against a synthetic 120 BPM track: the bar spikes past the line on each
+hit and drains back to near zero before the next, the lamp fires on exactly those
+frames, and the tempo readout settles at 118 BPM with 100% confidence.
+
 ### Latency budget
 
 Roughly 60–90 ms worst case from sound to bulb:
@@ -344,10 +396,16 @@ bulb count for the current frame.
 
 ### Tests
 
-115 tests covering the wall model, the exact byte layout of the protocol,
+297 tests covering the wall model, the exact byte layout of the protocol,
 round-trip packing, effect repeatability, engine behaviour, the receiver's
-stream handling under deliberately injected faults, and the output pipeline
-end to end.
+stream handling under deliberately injected faults, the output pipeline end to
+end, and the whole audio chain — loudness, automatic gain, frequency bands,
+smoothing, onset detection and tempo estimation.
+
+The audio tests are worth singling out. They feed in signals whose answers are
+known in advance — a 100 Hz tone, a synthetic drum track at a stated tempo — so
+they check against the right answer rather than against a judgement call. None
+of them needs a sound card or anything playing.
 
 ### Two walls side by side
 
@@ -369,34 +427,47 @@ staying broken.
 
 That is the genuine recovery path running for real, not a mock-up of it.
 
-## Not Yet Implemented
-
 ### Serial wiring in the UI
 
-`SerialTransport` and `SerialPortLister` are written and tested, but there is no
-way to select a port from the window yet — the app still attaches the loopback at
-startup. Adding a port dropdown and a connect button is the next step, and is the
-only thing standing between the app and real hardware.
+The window has a port dropdown, Refresh, Connect and Disconnect. Connecting
+**adds** the real wall alongside the virtual one rather than replacing it, which
+is the project's most useful diagnostic: if both walls agree and the hardware
+disagrees, the fault is wiring, firmware or a relay; if the virtual wall is
+already wrong, the fault is upstream and no cable is involved.
 
 ### Arduino firmware
 
-Only a README exists. The protocol is specified and has a reference
-implementation in C# to translate from, but no firmware has been written and
-nothing has been tested against real hardware.
+Written, deployed and verified against the physical wall. It is a translation of
+`VirtualWallReceiver` — the same byte-at-a-time state machine, sync hunting,
+checksum validation and watchdog — which is why it worked with so little
+debugging on the board itself.
 
-### Audio system
+**Hardware Check** in the window lights one bulb at a time so the pin map can be
+checked against the relay labels. That is how the mapping was confirmed on
+2026-08-04, and it found nothing wrong: bulbs light top-left to bottom-right in
+the expected order.
 
-Not started.
+## Not Yet Implemented
 
-- Windows system audio capture
-- level and frequency-band analysis
-- onset detection, BPM estimation
-- music-to-animation mapping
+Nothing in the original plan is outstanding. What remains is improvement rather
+than missing foundation, and is listed in `NEXT_STEPS.md`. In short:
+
+- **Tuning by ear.** The beat sliders now exist but the defaults have not been
+  dialled in against real music. Same for the Smoothing and Sensitivity defaults.
+- **Output rate.** 30 packets a second is the safe number and the largest single
+  contributor to audio-to-light delay. 60 is within proven territory; the trade
+  is relay wear.
+- **Beat-driven effects.** `AudioFeatures.BeatPhase` runs from 0 to 1 across each
+  beat and nothing uses it yet. Bar tracking would open up more.
+- **Scene control for a DJ.** The real product goal, and where
+  `EffectParameters` finally needs to become a per-effect system rather than one
+  shared object.
 
 ## Current Development State
 
-The project has a real visual engine, a tested protocol, reusable effect logic,
-and a clean separation between logic and interface.
+The project has a working visual engine, a tested protocol, a real audio analysis
+chain, firmware running on the board, and a clean separation between logic and
+interface. Everything in `LightWall.Core` — which is all the analysis and all the
+effects — is testable with no window, no sound card and nothing playing.
 
-The layer that logically comes next is serial transport, followed by firmware,
-followed by audio.
+The work from here is tuning and features rather than plumbing.

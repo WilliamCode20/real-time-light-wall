@@ -18,14 +18,25 @@ substitute for.
 `OnsetDetector.Sensitivity` is 1.4 and `MinimumSecondsBetweenBeats` is 0.12.
 Both are reasoned defaults that nobody has dialled in by ear.
 
-Use **Beat Flash** to judge:
+Both are now sliders in the window — **Beat size** and **Beat gap** — with a
+trigger meter and a beat lamp beside them, so this can be done in one sitting
+with music playing rather than one rebuild at a time.
 
-- flashing too often → raise Sensitivity
+How to read it:
+
+- flashing too often → raise Beat size
 - missing obvious hits → lower it
-- double-flashing on one hit → raise the minimum gap
+- double-flashing on one hit → raise Beat gap
+- bar not reaching the red line on hits you can clearly hear → Beat size is the
+  right knob
+- bar comfortably past the line but no lamp → it is one of the timing guards,
+  not the size, so Beat gap is the one to look at
 
-**Tempo Pulse** is the cross-check: if it locks on well while Beat Flash looks
-wrong, the problem is sensitivity rather than the tempo estimate.
+Whatever values feel right should become the defaults in `OnsetDetector`.
+
+**Beat Flash** shows it on the wall, and **Tempo Pulse** is the cross-check: if
+it locks on well while Beat Flash looks wrong, the problem is sensitivity rather
+than the tempo estimate.
 
 ### 2. Audio smoothing and sensitivity defaults
 
