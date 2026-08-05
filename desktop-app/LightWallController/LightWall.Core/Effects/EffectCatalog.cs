@@ -223,7 +223,8 @@ namespace LightWall.Core.Effects
             {
                 new MeteorEffect(),
                 new SparkleStormEffect(),
-                new EqBumperEffect()
+                new EqBumperEffect(),
+                new BeatFlashEffect()
             };
         }
     }

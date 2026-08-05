@@ -104,7 +104,8 @@ namespace LightWall.Core.Audio
             double rms,
             double peak,
             double deltaSeconds,
-            double[]? bandLevels = null)
+            double[]? bandLevels = null,
+            BeatInfo? beat = null)
         {
             // Convert to something that matches how loudness feels before
             // smoothing, not after. Smoothing a linear value and converting
@@ -121,13 +122,19 @@ namespace LightWall.Core.Audio
             // the same whether the computer is at half volume or full.
             double normalised = Gain.Normalise(_level, deltaSeconds);
 
+            BeatInfo beatInfo = beat ?? BeatInfo.None;
+
             return new AudioFeatures(
                 rms,
                 peak,
                 _level,
                 normalised,
                 bandLevels ?? new double[FrequencyBands.Count],
-                isSilent: false);
+                isSilent: false,
+                beatInfo.SecondsSinceBeat,
+                beatInfo.BeatCount,
+                beatInfo.TempoBpm,
+                beatInfo.TempoConfidence);
         }
 
         /// <summary>
@@ -141,11 +148,16 @@ namespace LightWall.Core.Audio
         /// The level is eased down rather than cut to zero, so pausing a track
         /// fades the wall out instead of snapping it dark.
         /// </summary>
-        public AudioFeatures UpdateSilent(double deltaSeconds, double[]? bandLevels = null)
+        public AudioFeatures UpdateSilent(
+            double deltaSeconds,
+            double[]? bandLevels = null,
+            BeatInfo? beat = null)
         {
             _level = MoveTowards(_level, 0.0, ReleaseSeconds, deltaSeconds);
 
             double normalised = Gain.Normalise(_level, deltaSeconds);
+
+            BeatInfo beatInfo = beat ?? BeatInfo.None;
 
             return new AudioFeatures(
                 0.0,
@@ -153,7 +165,11 @@ namespace LightWall.Core.Audio
                 _level,
                 normalised,
                 bandLevels ?? new double[FrequencyBands.Count],
-                isSilent: true);
+                isSilent: true,
+                beatInfo.SecondsSinceBeat,
+                beatInfo.BeatCount,
+                beatInfo.TempoBpm,
+                beatInfo.TempoConfidence);
         }
 
         /// <summary>

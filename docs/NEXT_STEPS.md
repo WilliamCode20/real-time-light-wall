@@ -108,11 +108,23 @@ Seven bands, one per column, bass on the left. Each with its own automatic gain,
 which is what makes the treble columns usable. The FFT is written out in Core so
 the whole chain is testable without audio hardware.
 
-### 10. Onset and beat detection
+### 10. Onset and beat detection — DONE
 
-Harder, and worth deferring until bands work. Onset detection (spotting a sudden
-rise in energy) gets most of the way to something that feels beat-driven. Full
-BPM estimation and phase tracking is a much larger problem and may not be needed.
+Spectral flux onset detection with a moving threshold, median-based tempo
+estimation with confidence, and a Beat Flash effect for judging it by eye.
+
+Still open here:
+
+- **Tuning against real music.** `OnsetDetector.Sensitivity` (1.4) and the
+  minimum gap (0.12 s) are reasoned defaults, not values anyone has dialled in
+  while listening. Beat Flash is the tool for that.
+- **Beat prediction.** Flashing happens on detection, so it inherits the full
+  latency budget. Using the tempo estimate to predict the *next* beat would let
+  effects land exactly on time. Deliberately not done yet, because a predicted
+  flash looks convincing whether or not detection works and would hide faults
+  during tuning. Worth adding once detection is trusted.
+- **Beat-driven effects beyond flashing** — pattern changes on the bar, sweeps
+  timed to the beat, and so on.
 
 ### 11. Scene and mapping controls
 

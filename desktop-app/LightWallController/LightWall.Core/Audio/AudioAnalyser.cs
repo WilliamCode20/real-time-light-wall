@@ -44,6 +44,30 @@ namespace LightWall.Core.Audio
         public SpectrumAnalyser Spectrum { get; }
 
         /// <summary>
+        /// Spots the moment new sounds start - drum hits, chords, stabs.
+        /// </summary>
+        public OnsetDetector Onsets { get; } = new();
+
+        /// <summary>
+        /// Works out the tempo from the timing of those onsets.
+        /// </summary>
+        public TempoEstimator Tempo { get; } = new();
+
+        /// <summary>
+        /// Running total of time since capture started.
+        ///
+        /// Beat detection needs absolute times rather than gaps, because it
+        /// reasons about how long ago things happened.
+        /// </summary>
+        private double _elapsedSeconds;
+
+        /// <summary>When the last beat was detected.</summary>
+        private double _lastBeatSeconds = double.NegativeInfinity;
+
+        /// <summary>How many beats have been detected since capture started.</summary>
+        private int _beatCount;
+
+        /// <summary>
         /// Creates an analyser for audio at a given sample rate.
         /// </summary>
         public AudioAnalyser(int sampleRate = 48000)
@@ -108,12 +132,26 @@ namespace LightWall.Core.Audio
             int channels,
             double deltaSeconds)
         {
+            _elapsedSeconds += deltaSeconds;
+
             (double rms, double peak) = AudioSampleMath.Analyse(interleavedSamples);
 
             Spectrum.AddSamples(interleavedSamples, channels);
             double[] bands = Spectrum.Analyse(deltaSeconds);
 
-            return Level.Update(rms, peak, deltaSeconds, bands);
+            // Beat detection works from the RAW band strengths, not the smoothed
+            // ones. Smoothing rounds off exactly the sharp rise an onset
+            // consists of.
+            if (Onsets.Update(Spectrum.GetRawStrengths(), _elapsedSeconds))
+            {
+                _lastBeatSeconds = _elapsedSeconds;
+                _beatCount++;
+                Tempo.AddBeat(_elapsedSeconds);
+            }
+
+            Tempo.Update(_elapsedSeconds);
+
+            return Level.Update(rms, peak, deltaSeconds, bands, BuildBeatInfo());
         }
 
         /// <summary>
@@ -125,9 +163,27 @@ namespace LightWall.Core.Audio
         /// </summary>
         public AudioFeatures ProcessSilence(double deltaSeconds)
         {
+            _elapsedSeconds += deltaSeconds;
+
             double[] bands = Spectrum.AnalyseSilence(deltaSeconds);
 
-            return Level.UpdateSilent(deltaSeconds, bands);
+            // Let the tempo estimate expire rather than leaving the last reading
+            // of a finished track sitting there looking current.
+            Tempo.Update(_elapsedSeconds);
+
+            return Level.UpdateSilent(deltaSeconds, bands, BuildBeatInfo());
+        }
+
+        /// <summary>
+        /// Gathers the current beat information for a snapshot.
+        /// </summary>
+        private BeatInfo BuildBeatInfo()
+        {
+            double sinceBeat = double.IsNegativeInfinity(_lastBeatSeconds)
+                ? AudioFeatures.NoBeatYet
+                : _elapsedSeconds - _lastBeatSeconds;
+
+            return new BeatInfo(sinceBeat, _beatCount, Tempo.Bpm, Tempo.Confidence);
         }
 
         /// <summary>
@@ -137,6 +193,12 @@ namespace LightWall.Core.Audio
         {
             Level.Reset();
             Spectrum.Reset();
+            Onsets.Reset();
+            Tempo.Reset();
+
+            _elapsedSeconds = 0.0;
+            _lastBeatSeconds = double.NegativeInfinity;
+            _beatCount = 0;
         }
     }
 }

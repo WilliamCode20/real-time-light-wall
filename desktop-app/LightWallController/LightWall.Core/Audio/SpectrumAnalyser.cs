@@ -95,6 +95,17 @@ namespace LightWall.Core.Audio
         private double _smoothing = 0.5;
 
         /// <summary>
+        /// The band strengths straight out of the transform, before smoothing
+        /// or automatic gain.
+        ///
+        /// Kept because beat detection needs them. Smoothing rounds off exactly
+        /// the sharp rise an onset consists of, and automatic gain would make
+        /// quiet noise look like a real jump - both fatal to spotting the moment
+        /// a drum lands.
+        /// </summary>
+        private readonly double[] _rawStrengths = new double[FrequencyBands.Count];
+
+        /// <summary>
         /// The quickest a band falls back, at zero smoothing. Snappy and a
         /// little twitchy.
         /// </summary>
@@ -286,12 +297,29 @@ namespace LightWall.Core.Audio
             {
                 double strength = GetBandStrength(band);
 
+                // Keep the raw value for beat detection, which needs the sharp
+                // edges that smoothing is about to round off.
+                _rawStrengths[band] = strength;
+
                 AudioFeatures features = _trackers[band].Update(strength, strength, deltaSeconds);
 
                 _bandLevels[band] = features.NormalisedLevel;
             }
 
             return BlendNeighbours();
+        }
+
+        /// <summary>
+        /// The band strengths straight out of the transform, before smoothing or
+        /// automatic gain.
+        ///
+        /// Returns the working array rather than a copy, because the only caller
+        /// is beat detection on the same thread, immediately after analysis.
+        /// Not for handing to anything that keeps it.
+        /// </summary>
+        public double[] GetRawStrengths()
+        {
+            return _rawStrengths;
         }
 
         /// <summary>
@@ -363,6 +391,7 @@ namespace LightWall.Core.Audio
         {
             Array.Clear(_samples);
             Array.Clear(_bandLevels);
+            Array.Clear(_rawStrengths);
             _writePosition = 0;
 
             foreach (AudioLevelTracker tracker in _trackers)

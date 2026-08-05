@@ -55,13 +55,21 @@ namespace LightWall.Core.Audio
             double level,
             double normalisedLevel,
             double[] bandLevels,
-            bool isSilent)
+            bool isSilent,
+            double secondsSinceBeat = NoBeatYet,
+            int beatCount = 0,
+            double tempoBpm = 0.0,
+            double tempoConfidence = 0.0)
         {
             Rms = rms;
             Peak = peak;
             Level = level;
             NormalisedLevel = normalisedLevel;
             IsSilent = isSilent;
+            SecondsSinceBeat = secondsSinceBeat;
+            BeatCount = beatCount;
+            TempoBpm = tempoBpm;
+            TempoConfidence = tempoConfidence;
 
             _bandLevels = bandLevels ?? throw new ArgumentNullException(nameof(bandLevels));
 
@@ -162,6 +170,58 @@ namespace LightWall.Core.Audio
 
             return _bandLevels[band];
         }
+
+        /// <summary>
+        /// The value SecondsSinceBeat carries when no beat has been heard.
+        ///
+        /// A large number rather than a null or a separate flag, so that an
+        /// effect asking "was there a beat in the last tenth of a second?" gets
+        /// a sensible "no" without needing to check anything first.
+        /// </summary>
+        public const double NoBeatYet = 9999.0;
+
+        /// <summary>
+        /// How long ago the last beat was detected, in seconds.
+        ///
+        /// THE ONE TO DRIVE BEAT-REACTIVE EFFECTS WITH.
+        ///
+        /// Deliberately a time rather than a "beat happened" flag. A flag would
+        /// be true for one audio buffer only, and the engine reads these
+        /// snapshots on its own schedule - so a flag could be missed entirely,
+        /// or seen twice and counted as two beats.
+        ///
+        /// A time works whatever the rates involved: "flash for the first tenth
+        /// of a second after a beat" means the same thing regardless of how
+        /// often anyone looks.
+        /// </summary>
+        public double SecondsSinceBeat { get; }
+
+        /// <summary>
+        /// How many beats have been detected since capture started.
+        ///
+        /// Only ever increases. An effect wanting to do something once per beat
+        /// - rather than for a stretch after each one - can compare this against
+        /// what it saw last time.
+        /// </summary>
+        public int BeatCount { get; }
+
+        /// <summary>
+        /// The estimated tempo in beats per minute, or 0 when unknown.
+        ///
+        /// Note that tempo is genuinely ambiguous: the same music at 70 and at
+        /// 140 are both correct descriptions, and listeners disagree about this
+        /// constantly. A slow track may be reported at double its written tempo.
+        /// See TempoEstimator.
+        /// </summary>
+        public double TempoBpm { get; }
+
+        /// <summary>
+        /// How consistent the recent beats have been, from 0 to 1.
+        ///
+        /// Worth having alongside the tempo, because a confident wrong answer
+        /// and an unconfident one look identical without it.
+        /// </summary>
+        public double TempoConfidence { get; }
 
         /// <summary>
         /// True when nothing is playing.

@@ -219,6 +219,54 @@ neighbour blending — from raw and twitchy to slow and flowing. The attack is
 deliberately never slowed: however smooth the wall should look, a drum hit should
 land the moment it happens.
 
+### Beat detection
+
+`OnsetDetector` spots the moment a new sound *starts* — which is what a beat
+actually is. A sustained bass note is loud its whole length but begins only once;
+detecting loudness would flash for the entire note, detecting onsets flashes once.
+
+It uses **spectral flux**: comparing each band separately and adding up only the
+increases. A hi-hat landing over a held bass note raises the high bands while the
+low ones are unchanged, so the flux jumps even though the overall level barely
+moves. Only increases count — a sound ending is not a sound starting.
+
+The threshold **follows the recent average** rather than being fixed. A beat is
+not "louder than some number" but "a bigger jump than this music has been making
+lately", which is much closer to what a listener notices, and works across dense
+and sparse material alike.
+
+Three separate guards, each ruling out a different false alarm: a minimum flux
+(so near-silence does not trigger), a rising-edge requirement (so the readings
+after a peak are not each counted), and a minimum gap of 0.12 s (so one drum hit
+is not reported three times).
+
+Detection works from the **raw** band strengths, not the smoothed ones. Smoothing
+rounds off exactly the sharp rise an onset consists of.
+
+### Tempo
+
+`TempoEstimator` takes the **median** of recent gaps between beats, not the
+average — one missed beat produces a doubled gap that would drag an average
+upward, and the median simply ignores it.
+
+Tempo is genuinely ambiguous: the same music at 70 and at 140 are both correct
+descriptions, and listeners disagree about this constantly. Gaps are folded by
+doubling or halving into 70–180 BPM, so a slow track may be reported at double
+its written tempo. For driving lights that barely matters.
+
+**Confidence** is reported alongside, as the fraction of recent gaps agreeing
+with the estimate. Worth having because a confident wrong answer and an
+unconfident one look identical without it. Observed in practice: a phone ringtone
+gives a number with 33% confidence, correctly signalling that it has onsets but
+no real beat.
+
+**Beat Flash** flashes the whole wall on each detected beat. Deliberately the
+crudest possible visual — anything more elaborate would obscure whether a flash
+was early, late or missing, which is exactly what needs spotting while tuning.
+It flashes on *detection* rather than on prediction from the tempo: a predicted
+flash would look convincing whether or not the detection underneath it worked,
+hiding the faults it exists to reveal.
+
 ### Latency budget
 
 Roughly 60–90 ms worst case from sound to bulb:

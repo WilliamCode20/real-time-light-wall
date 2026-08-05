@@ -801,12 +801,20 @@ namespace LightWall.App
                 return;
             }
 
+            // The tempo readout. Confidence sits beside it deliberately: a
+            // confident wrong answer and an unconfident one look identical
+            // without it, and knowing which you have changes what to do.
+            string tempo = features.TempoBpm > 0.0
+                ? $"{features.TempoBpm:F0} BPM ({features.TempoConfidence:P0} sure)"
+                : "BPM: listening...";
+
             AudioStatusTextBlock.Text =
                 $"Listening to {_audio.Name}{Environment.NewLine}" +
                 $"drives wall {features.NormalisedLevel:F2}   " +
                 $"raw level {features.Level:F2}   " +
                 $"auto-gain ref {_audio.GainReference:F2}" +
-                (features.IsSilent ? "   [silent]" : string.Empty);
+                (features.IsSilent ? "   [silent]" : string.Empty) +
+                $"{Environment.NewLine}{tempo}   beats {features.BeatCount}";
         }
 
         /// <summary>
