@@ -91,6 +91,31 @@ namespace LightWall.Core.Audio
         /// <summary>The latest level for each band, from 0 to 1.</summary>
         private readonly double[] _bandLevels = new double[FrequencyBands.Count];
 
+        /// <summary>How settled the bands look. See Smoothing.</summary>
+        private double _smoothing = 0.5;
+
+        /// <summary>
+        /// The quickest a band falls back, at zero smoothing. Snappy and a
+        /// little twitchy.
+        /// </summary>
+        private const double MinimumReleaseSeconds = 0.10;
+
+        /// <summary>
+        /// The slowest a band falls back, at full smoothing. Flowing, and
+        /// starting to lag behind fast music.
+        /// </summary>
+        private const double MaximumReleaseSeconds = 0.50;
+
+        /// <summary>
+        /// How much a band borrows from each of its neighbours at full
+        /// smoothing.
+        ///
+        /// Kept well under half, because a band that takes more from its
+        /// neighbours than from itself stops representing its own frequencies
+        /// and the wall becomes one wide blur.
+        /// </summary>
+        private const double MaximumNeighbourBlend = 0.30;
+
         /// <summary>
         /// Creates an analyser for audio at a given sample rate.
         /// </summary>
@@ -113,19 +138,15 @@ namespace LightWall.Core.Audio
             {
                 _trackers[band] = new AudioLevelTracker
                 {
-                    // Faster than the overall level tracker. A column following
-                    // one narrow slice of the sound should snap to a drum hit,
-                    // where the overall level benefits from a little more
-                    // steadiness.
-                    AttackSeconds = 0.005,
-                    ReleaseSeconds = 0.12,
-
                     // A shallower floor than the overall level uses. Within a
                     // single band the useful range is narrower, so stretching it
                     // over 60 dB would leave everything bunched near the top.
                     MinimumDecibels = -45.0
                 };
             }
+
+            // Apply the default smoothing to every tracker.
+            Smoothing = _smoothing;
         }
 
         /// <summary>
@@ -148,6 +169,52 @@ namespace LightWall.Core.Audio
                 foreach (AudioLevelTracker tracker in _trackers)
                 {
                     tracker.Gain.Gain = value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// How settled the bands look, from 0 (raw and twitchy) to 1 (slow and
+        /// flowing). 0.5 is a reasonable middle.
+        ///
+        /// One control adjusting two things at once, because they are two halves
+        /// of the same idea:
+        ///
+        /// - how long a band takes to fall back after a hit, which smooths each
+        ///   column over TIME
+        /// - how much neighbouring bands blend into each other, which smooths
+        ///   the top edge ACROSS the wall
+        ///
+        /// The second is what gives an equaliser its familiar rolling curve
+        /// rather than seven independent columns jumping about. It is also
+        /// honest rather than decorative: neighbouring frequencies in real music
+        /// genuinely are related, and the exact place we drew each band boundary
+        /// was always somewhat arbitrary.
+        ///
+        /// The attack is deliberately NOT slowed by this. However smooth the
+        /// wall should look, a drum hit should still land the moment it happens
+        /// - slowing the rise makes the whole thing feel late rather than calm.
+        /// </summary>
+        public double Smoothing
+        {
+            get => _smoothing;
+            set
+            {
+                _smoothing = Math.Clamp(value, 0.0, 1.0);
+
+                // Falling gets slower as smoothing rises, from a snappy tenth of
+                // a second up to a languid half second.
+                double release = MinimumReleaseSeconds
+                    + (_smoothing * (MaximumReleaseSeconds - MinimumReleaseSeconds));
+
+                foreach (AudioLevelTracker tracker in _trackers)
+                {
+                    tracker.ReleaseSeconds = release;
+
+                    // Rising stays quick regardless. A little slower than
+                    // instant, which takes the edge off single-buffer spikes
+                    // without making anything feel delayed.
+                    tracker.AttackSeconds = 0.02;
                 }
             }
         }
@@ -215,8 +282,6 @@ namespace LightWall.Core.Audio
         {
             ComputeMagnitudes();
 
-            var levels = new double[FrequencyBands.Count];
-
             for (int band = 0; band < FrequencyBands.Count; band++)
             {
                 double strength = GetBandStrength(band);
@@ -224,10 +289,9 @@ namespace LightWall.Core.Audio
                 AudioFeatures features = _trackers[band].Update(strength, strength, deltaSeconds);
 
                 _bandLevels[band] = features.NormalisedLevel;
-                levels[band] = features.NormalisedLevel;
             }
 
-            return levels;
+            return BlendNeighbours();
         }
 
         /// <summary>
@@ -238,17 +302,58 @@ namespace LightWall.Core.Audio
         /// </summary>
         public double[] AnalyseSilence(double deltaSeconds)
         {
-            var levels = new double[FrequencyBands.Count];
-
             for (int band = 0; band < FrequencyBands.Count; band++)
             {
                 AudioFeatures features = _trackers[band].UpdateSilent(deltaSeconds);
 
                 _bandLevels[band] = features.NormalisedLevel;
-                levels[band] = features.NormalisedLevel;
             }
 
-            return levels;
+            return BlendNeighbours();
+        }
+
+        /// <summary>
+        /// Lets each band borrow a little from the ones either side of it.
+        ///
+        /// This is what gives the wall a rolling curve along its top edge rather
+        /// than seven independent columns jumping about. Without it, adjacent
+        /// bars regularly differ by two or three rows and the shape reads as
+        /// random spikes instead of a shape following the music.
+        ///
+        /// It is not merely decorative. Neighbouring frequencies in real music
+        /// genuinely are related - a bass note has harmonics reaching up into
+        /// the band above it - and the exact frequency at which we chose to draw
+        /// each boundary was always somewhat arbitrary. Letting the bands bleed
+        /// slightly acknowledges that the sound does not actually stop at the
+        /// lines we drew.
+        ///
+        /// The outermost bands have only one neighbour each, so they lean on
+        /// that one twice as hard. The alternative - treating the edges as
+        /// bordering silence - would drag the first and last columns downward
+        /// for no musical reason.
+        /// </summary>
+        private double[] BlendNeighbours()
+        {
+            var blended = new double[FrequencyBands.Count];
+
+            double share = _smoothing * MaximumNeighbourBlend;
+
+            for (int band = 0; band < FrequencyBands.Count; band++)
+            {
+                double below = band > 0 ? _bandLevels[band - 1] : _bandLevels[band + 1];
+                double above = band < FrequencyBands.Count - 1
+                    ? _bandLevels[band + 1]
+                    : _bandLevels[band - 1];
+
+                double own = 1.0 - (2.0 * share);
+
+                blended[band] = Math.Clamp(
+                    (_bandLevels[band] * own) + (below * share) + (above * share),
+                    0.0,
+                    1.0);
+            }
+
+            return blended;
         }
 
         /// <summary>

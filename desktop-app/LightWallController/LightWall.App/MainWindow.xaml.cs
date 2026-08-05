@@ -831,6 +831,25 @@ namespace LightWall.App
         }
 
         /// <summary>
+        /// Runs whenever the smoothing slider moves.
+        ///
+        /// Takes effect on the very next audio buffer, so the difference between
+        /// twitchy and flowing can be heard and seen while dragging.
+        /// </summary>
+        private void AudioSmoothingSlider_ValueChanged(
+            object sender,
+            RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (AudioSmoothingValueTextBlock is null)
+            {
+                return;
+            }
+
+            _audio.Smoothing = AudioSmoothingSlider.Value;
+            AudioSmoothingValueTextBlock.Text = $"{AudioSmoothingSlider.Value:F2}";
+        }
+
+        /// <summary>
         /// Sets a meter bar to a fraction of the space available to it.
         ///
         /// The width is worked out from the parent's measured size rather than

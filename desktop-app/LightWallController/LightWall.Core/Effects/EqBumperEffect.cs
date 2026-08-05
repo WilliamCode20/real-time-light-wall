@@ -44,6 +44,21 @@ namespace LightWall.Core.Effects
     /// </summary>
     public sealed class EqBumperEffect : IWallEffect
     {
+        /// <summary>
+        /// Stops the bars chattering between two heights when a level sits near
+        /// a row boundary.
+        ///
+        /// Without this the wall looks like static: with only five rows, a band
+        /// hovering around the halfway point of a row flips back and forth
+        /// several times a second, and seven columns all doing it independently
+        /// reads as noise rather than as music.
+        ///
+        /// See BarHeightSmoother, including a note on why holding state here is
+        /// acceptable for an audio-reactive effect.
+        /// </summary>
+        private readonly BarHeightSmoother _bars =
+            new(WallFrame.Columns, WallFrame.Rows);
+
         /// <inheritdoc />
         public string DisplayName => "EQ Bumper";
 
@@ -64,6 +79,8 @@ namespace LightWall.Core.Effects
                 // nothing, so it is obvious the effect is running and waiting
                 // rather than broken - and without inventing motion that might
                 // be mistaken for a response to sound.
+                _bars.Reset();
+
                 for (int column = 0; column < WallFrame.Columns; column++)
                 {
                     target.SetCell(WallFrame.Rows - 1, column, true);
@@ -81,7 +98,9 @@ namespace LightWall.Core.Effects
                 // bands: a mismatch produces a dark column rather than a crash.
                 double level = context.Audio.GetBandLevel(column);
 
-                int barHeight = GetBarHeight(level);
+                // Through the smoother rather than rounded directly, so a level
+                // sitting near a row boundary does not make the top bulb chatter.
+                int barHeight = _bars.GetHeight(column, level);
 
                 for (int rowOffset = 0; rowOffset < barHeight; rowOffset++)
                 {
@@ -90,24 +109,5 @@ namespace LightWall.Core.Effects
             }
         }
 
-        /// <summary>
-        /// Converts a band level from 0 to 1 into a number of lit rows.
-        /// </summary>
-        private static int GetBarHeight(double level)
-        {
-            // No minimum. When the music stops, every band decays to zero and
-            // the wall goes properly dark - both what an equaliser does and the
-            // honest answer to "there is no sound".
-            //
-            // AwayFromZero is specified because .NET rounds halves to the
-            // nearest EVEN number by default, so Math.Round(2.5) gives 2 rather
-            // than 3. That is the right choice for statistics, where always
-            // rounding halves upward introduces a slow bias, and the wrong one
-            // here, where it just means a bar sitting one row short at exactly
-            // the halfway point for no guessable reason.
-            return (int)Math.Round(
-                Math.Clamp(level, 0.0, 1.0) * WallFrame.Rows,
-                MidpointRounding.AwayFromZero);
-        }
     }
 }

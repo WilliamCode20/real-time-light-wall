@@ -97,6 +97,30 @@ namespace LightWall.Core.Audio
         public double Contrast { get; set; } = 1.6;
 
         /// <summary>
+        /// The level below which we report nothing at all rather than
+        /// amplifying.
+        ///
+        /// WHY THIS IS NEEDED - a real cause of flickering
+        ///
+        /// The automatic adjustment divides by a reference that shrinks when
+        /// nothing loud is happening. For a band with almost no content - the
+        /// sub-bass on a track with no deep bass, say - that means dividing a
+        /// tiny number by another tiny number.
+        ///
+        /// The result swings wildly on noise that is inaudible. A band carrying
+        /// nothing musical at all ends up shimmering between one row and none,
+        /// several times a second, and the wall looks like static.
+        ///
+        /// Below this level we simply say zero. A band with nothing in it stays
+        /// dark rather than being amplified into a light show.
+        ///
+        /// This is measured before the automatic adjustment, so it is an
+        /// absolute judgement about whether there is anything there - which is
+        /// exactly what it should be.
+        /// </summary>
+        public double NoiseGate { get; set; } = 0.06;
+
+        /// <summary>
         /// The current reference level. Useful for diagnostics, and for showing
         /// how hard the automatic adjustment is working.
         /// </summary>
@@ -110,6 +134,14 @@ namespace LightWall.Core.Audio
         /// <param name="deltaSeconds">Time since the previous reading.</param>
         public double Normalise(double level, double deltaSeconds)
         {
+            // Nothing worth amplifying. Say so plainly rather than dividing one
+            // tiny number by another and producing noise. See NoiseGate.
+            //
+            // The reference is still allowed to decay below, so that when sound
+            // does return the adjustment is not stuck holding an old, loud
+            // reference and reporting near-silence.
+            bool belowGate = level < NoiseGate;
+
             if (level > _reference)
             {
                 // Something louder than anything recent. Jump straight to it,
@@ -128,6 +160,11 @@ namespace LightWall.Core.Audio
                     MinimumReference,
                     ReferenceDecaySeconds,
                     deltaSeconds);
+            }
+
+            if (belowGate)
+            {
+                return 0.0;
             }
 
             // Never divide by less than the floor. This is what stops silence

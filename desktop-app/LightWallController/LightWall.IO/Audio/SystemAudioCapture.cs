@@ -132,6 +132,16 @@ namespace LightWall.IO.Audio
         }
 
         /// <summary>
+        /// How settled the wall looks, from 0 (raw and twitchy) to 1 (slow and
+        /// flowing). This is what the Smoothing slider sets.
+        /// </summary>
+        public double Smoothing
+        {
+            get => _analyser.Smoothing;
+            set => _analyser.Smoothing = value;
+        }
+
+        /// <summary>
         /// The reference level the automatic adjustment is currently working
         /// against. Shown in the interface, because seeing it move is the
         /// clearest way to tell the adjustment is doing something.

@@ -187,6 +187,38 @@ normalises whatever scale a band naturally sits at. It now sums the squares and
 takes the root, which is the actual energy in that stretch of spectrum and gives
 a pure tone the same reading regardless of band width.
 
+### Smoothing
+
+Real music initially looked jittery — individual bulbs flickering on and off for
+a frame or two, giving an energy hard to read as connected to the song. Three
+separate causes, each fixed:
+
+**Chatter at row boundaries** was the biggest. With five rows, a band sitting
+near the halfway point of a row flips between two heights on the tiniest
+fluctuation, and seven columns doing it independently reads as static. The cause
+is not noisy audio — it is that a boundary is infinitely sharp.
+
+`BarHeightSmoother` adds hysteresis: once a bar settles, it takes more than a
+hair's movement to shift it. The same trick a thermostat uses. A side benefit is
+that very quiet bands no longer light their first row and twitch.
+
+**Quiet bands shimmering.** The automatic gain divides by a reference that
+shrinks when nothing loud happens, so a band with no content — sub-bass on a
+track with no deep bass — ended up dividing one tiny number by another and
+swinging wildly on inaudible noise. `AudioGainController.NoiseGate` reports zero
+below a threshold instead of amplifying.
+
+**A jagged top edge.** Neighbouring columns moving independently gave a sawtooth
+rather than the rolling curve an equaliser is expected to have. Bands now borrow
+a little from each side. This is honest rather than decorative: adjacent
+frequencies in real music genuinely are related, and the band boundaries were
+always somewhat arbitrary.
+
+A **Smoothing** slider controls the last two together — release time and
+neighbour blending — from raw and twitchy to slow and flowing. The attack is
+deliberately never slowed: however smooth the wall should look, a drum hit should
+land the moment it happens.
+
 ### Latency budget
 
 Roughly 60–90 ms worst case from sound to bulb:

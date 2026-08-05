@@ -79,6 +79,16 @@ namespace LightWall.Core.Audio
         }
 
         /// <summary>
+        /// How settled the wall looks, from 0 (raw and twitchy) to 1 (slow and
+        /// flowing). See SpectrumAnalyser.Smoothing.
+        /// </summary>
+        public double Smoothing
+        {
+            get => Spectrum.Smoothing;
+            set => Spectrum.Smoothing = value;
+        }
+
+        /// <summary>
         /// The reference the overall automatic adjustment is working against.
         /// Shown in the interface, since watching it move is the clearest sign
         /// the adjustment is doing something.
