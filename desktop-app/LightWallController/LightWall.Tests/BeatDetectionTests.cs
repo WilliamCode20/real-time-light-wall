@@ -376,6 +376,106 @@ namespace LightWall.Tests
         }
 
         // ------------------------------------------------------------------
+        // The trigger meter
+        //
+        // These matter because the meter is what the sensitivity setting is
+        // dialled in against. A meter that reads plausibly but wrongly is worse
+        // than no meter at all, because it would be trusted.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Builds a set of band strengths all at the same level.
+        ///
+        /// The detector only ever adds the bands up, so spreading a hit evenly
+        /// across them is as good a stand-in for a drum as anything and makes
+        /// the arithmetic in these tests easy to follow.
+        /// </summary>
+        private static double[] MakeBands(double level)
+        {
+            var bands = new double[FrequencyBands.Count];
+
+            for (int band = 0; band < bands.Length; band++)
+            {
+                bands[band] = level;
+            }
+
+            return bands;
+        }
+
+        [Fact]
+        public void AReportedBeatAlwaysReadsAtOrAboveTheTriggerPoint()
+        {
+            // The promise the meter makes to the person tuning: the red line is
+            // the point where a beat becomes possible. If a beat could be
+            // reported while the bar sat short of the line, the meter would be
+            // telling a story the detector does not agree with.
+            var detector = new OnsetDetector();
+
+            int beatsSeen = 0;
+
+            for (int step = 0; step < 600; step++)
+            {
+                // A spike every thirtieth reading, quiet in between - roughly
+                // three hits a second.
+                double level = step % 30 == 0 ? 0.8 : 0.05;
+
+                bool beat = detector.Update(MakeBands(level), step * 0.01);
+
+                if (beat)
+                {
+                    beatsSeen++;
+
+                    Assert.True(
+                        detector.TriggerRatio >= 1.0,
+                        $"A beat was reported while the meter read {detector.TriggerRatio:F2}, " +
+                        "which is below the trigger point.");
+                }
+            }
+
+            // Without this the test would pass on a signal that produced no
+            // beats at all, which would prove nothing.
+            Assert.True(beatsSeen > 0, "The test signal produced no beats to check.");
+        }
+
+        [Fact]
+        public void SilenceDoesNotPinTheTriggerMeter()
+        {
+            // This is the case the meter is measured against the higher of the
+            // two guards for. In silence the moving threshold decays to zero,
+            // so a meter comparing against the threshold alone would divide by
+            // nothing and read as either infinite or pinned at the top - telling
+            // the person tuning that beats were on the very edge of firing when
+            // in truth the room was quiet.
+            var detector = new OnsetDetector();
+
+            for (int step = 0; step < 300; step++)
+            {
+                detector.Update(MakeBands(0.0), step * 0.01);
+            }
+
+            Assert.True(
+                double.IsFinite(detector.TriggerRatio),
+                "The meter went to infinity or produced nonsense during silence.");
+
+            Assert.True(
+                detector.TriggerRatio < 1.0,
+                $"Silence read {detector.TriggerRatio:F2} on the meter, which looks like a near miss.");
+        }
+
+        [Fact]
+        public void TheTriggerMeterReadsNothingBeforeThereIsAnyHistory()
+        {
+            // On the very first reading there is nothing to compare against, so
+            // the detector holds off judging. The meter should say so by sitting
+            // at the bottom rather than showing a number invented from no data.
+            var detector = new OnsetDetector();
+
+            detector.Update(MakeBands(0.5), 0.0);
+
+            Assert.Equal(0.0, detector.TriggerRatio);
+        }
+
+        // ------------------------------------------------------------------
         // The flashing effect
         // ------------------------------------------------------------------
 

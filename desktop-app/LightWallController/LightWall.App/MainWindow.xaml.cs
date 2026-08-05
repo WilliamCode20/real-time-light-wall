@@ -97,6 +97,12 @@ namespace LightWall.App
         /// <summary>Normal background for an effect button that is not playing.</summary>
         private static readonly Brush InactiveEffectBrush = CreateFrozenBrush(221, 221, 221);
 
+        /// <summary>The beat lamp while a beat is being reported.</summary>
+        private static readonly Brush BeatLampLitBrush = CreateFrozenBrush(255, 199, 0);
+
+        /// <summary>The beat lamp the rest of the time.</summary>
+        private static readonly Brush BeatLampUnlitBrush = CreateFrozenBrush(42, 42, 42);
+
         /// <summary>
         /// The show clock: owns the engine and runs it on a background thread.
         ///
@@ -135,6 +141,38 @@ namespace LightWall.App
         /// while creating it involves asking Windows about audio devices.
         /// </summary>
         private readonly SystemAudioCapture _audio = new();
+
+        /// <summary>
+        /// What the trigger meter is currently showing, which is not quite the
+        /// same as the latest reading.
+        ///
+        /// WHY THE METER NEEDS A MEMORY
+        ///
+        /// The detector produces a reading about a hundred times a second, and
+        /// the screen redraws about sixty times a second. So roughly two out of
+        /// every five readings are never seen by the meter at all - and the ones
+        /// most likely to be missed are the brief spikes, which are the entire
+        /// thing being looked for.
+        ///
+        /// A meter showing only whatever happened to be there at redraw time
+        /// would therefore miss a good share of the hits, and would look like
+        /// the detector was worse than it is.
+        ///
+        /// So this rises instantly to any new reading and falls back gradually,
+        /// which holds a spike on screen long enough to see. It is the same fast
+        /// attack, slow release idea used on the audio level itself, and for the
+        /// same reason.
+        ///
+        /// THE LIMIT THIS DOES NOT FIX
+        ///
+        /// A spike that begins and ends entirely between two redraws is still
+        /// missed - holding a value cannot recover one that was never read. The
+        /// lamp beside the meter is what covers that, because it works from a
+        /// time since the last beat rather than from a momentary value, so it
+        /// cannot fall down the gap between frames. That is why there are two
+        /// indicators rather than one.
+        /// </summary>
+        private double _displayedTriggerRatio;
 
         /// <summary>
         /// Samples the clock 30 times a second and sends packets to whatever
@@ -510,7 +548,7 @@ namespace LightWall.App
             // The meter is refreshed every frame rather than on the slower
             // statistics schedule. A level meter that updates four times a
             // second reads as broken; this needs to look continuous.
-            UpdateAudioReadout();
+            UpdateAudioReadout(deltaSeconds);
 
             UpdateFrameRateReadout(deltaSeconds);
             UpdateOutputStatsPeriodically(deltaSeconds);
@@ -751,7 +789,9 @@ namespace LightWall.App
             AudioStartButton.IsEnabled = !_audio.IsRunning;
             AudioStopButton.IsEnabled = _audio.IsRunning;
 
-            UpdateAudioReadout();
+            // No time has passed since the last redraw as far as the meters are
+            // concerned, so nothing should decay on this call.
+            UpdateAudioReadout(0.0);
         }
 
         /// <summary>
@@ -764,17 +804,21 @@ namespace LightWall.App
             AudioStartButton.IsEnabled = true;
             AudioStopButton.IsEnabled = false;
 
-            UpdateAudioReadout();
+            UpdateAudioReadout(0.0);
         }
 
         /// <summary>
-        /// Redraws the level meter and the audio status line.
+        /// Redraws the level meters and the audio status line.
         ///
         /// Called on every drawn frame, because a meter that updates a few times
-        /// a second looks broken rather than smooth. The work is trivial - two
+        /// a second looks broken rather than smooth. The work is trivial - a few
         /// widths and a short string.
         /// </summary>
-        private void UpdateAudioReadout()
+        /// <param name="deltaSeconds">
+        /// How long since the previous redraw. Only the trigger meter uses it,
+        /// to fall back at the same pace whatever the frame rate happens to be.
+        /// </param>
+        private void UpdateAudioReadout(double deltaSeconds)
         {
             // Let the level decay when nothing is playing. Windows stops sending
             // buffers entirely during silence rather than sending zeros, so
@@ -788,6 +832,8 @@ namespace LightWall.App
             // the meter does and what the bulbs do should always agree.
             SetBarWidth(AudioLevelBar, features.NormalisedLevel);
             SetBarWidth(AudioPeakBar, features.Peak);
+
+            UpdateBeatMeters(features, deltaSeconds);
 
             if (_audio.LastError is not null)
             {
@@ -815,6 +861,152 @@ namespace LightWall.App
                 $"auto-gain ref {_audio.GainReference:F2}" +
                 (features.IsSilent ? "   [silent]" : string.Empty) +
                 $"{Environment.NewLine}{tempo}   beats {features.BeatCount}";
+        }
+
+        /// <summary>
+        /// Where along the trigger meter the red line sits.
+        ///
+        /// This has to match the column widths given to the meter in the XAML,
+        /// which are 2 parts to 3 - so two fifths of the way across. Changing
+        /// one without the other would put the line somewhere the bar does not
+        /// agree with, and the meter would quietly lie.
+        ///
+        /// The alternative was to position the line from code as well, which
+        /// removes the duplication but adds a value that has to be recalculated
+        /// every time the window is resized. Two numbers that must match, in
+        /// files that sit next to each other, seemed the smaller problem.
+        /// </summary>
+        private const double TriggerPointFraction = 0.4;
+
+        /// <summary>
+        /// The reading a completely full trigger meter stands for.
+        ///
+        /// The red line is at 1.0 and sits two fifths of the way across, so the
+        /// remaining three fifths carry up to 2.5.
+        /// </summary>
+        private const double TriggerMeterTop = 1.0 / TriggerPointFraction;
+
+        /// <summary>
+        /// How fast the trigger meter falls back, in meter-lengths per second.
+        ///
+        /// Chosen so a full bar empties in a bit under half a second. Slower and
+        /// fast beats would smear into one another; faster and a spike would be
+        /// gone before the eye caught it.
+        /// </summary>
+        private const double TriggerFallPerSecond = 6.0;
+
+        /// <summary>
+        /// How long the beat lamp stays lit after a beat, in seconds.
+        ///
+        /// The screen redraws about every 17 ms, so anything much shorter than
+        /// this would be one or two frames and easy to miss entirely.
+        ///
+        /// The trade: wound all the way down, the beat gap slider allows beats
+        /// 0.05 s apart, and at that setting the lamp would never go out between
+        /// them. That is accepted deliberately - the bottom of that slider is an
+        /// extreme setting for diagnosing double-triggering, and the meter is
+        /// the thing to watch for that. At any normal tempo this reads as a
+        /// clear, separate blink.
+        /// </summary>
+        private const double BeatLampSeconds = 0.08;
+
+        /// <summary>
+        /// Redraws the trigger meter and the beat lamp.
+        /// </summary>
+        private void UpdateBeatMeters(AudioFeatures features, double deltaSeconds)
+        {
+            if (!_audio.IsRunning)
+            {
+                // Nothing is being listened to, so the meter has nothing to
+                // report. Emptying it outright rather than letting it decay
+                // makes "stopped" look different from "playing something quiet".
+                _displayedTriggerRatio = 0.0;
+                SetBarWidth(BeatTriggerBar, 0.0);
+                BeatLamp.Background = BeatLampUnlitBrush;
+                return;
+            }
+
+            // Anything past the top of the meter looks the same on screen, so
+            // there is nothing to gain by remembering how far past it went.
+            //
+            // WHY THIS CLAMP IS HERE, AND WHAT HAPPENED WITHOUT IT
+            //
+            // The first version stored the reading as it came. That seemed
+            // harmless - the bar is clamped when it is drawn, so what could it
+            // matter? It mattered a lot.
+            //
+            // A hit landing after a quiet moment is measured against a very low
+            // threshold, so the ratio is not 2 or 3 but sometimes 20 or more.
+            // Storing 20 and then draining it at 6 a second means twenty of
+            // those units have to be worked through before the bar so much as
+            // twitches - well over three seconds, by which time the next several
+            // beats have topped it up again.
+            //
+            // The result was a meter that pinned at full the moment music
+            // started and simply stayed there, which was spotted only by playing
+            // something and watching it. It looked like a plausible reading, and
+            // that is what made it worth catching: the meter is supposed to be
+            // the thing you trust while tuning.
+            double latest = Math.Min(_audio.BeatTriggerRatio, TriggerMeterTop);
+
+            // Rise instantly, fall gradually. See _displayedTriggerRatio for why
+            // the meter needs to remember anything at all.
+            if (latest >= _displayedTriggerRatio)
+            {
+                _displayedTriggerRatio = latest;
+            }
+            else
+            {
+                _displayedTriggerRatio = Math.Max(
+                    latest,
+                    _displayedTriggerRatio - (TriggerFallPerSecond * deltaSeconds));
+            }
+
+            // A reading of 1 has to land on the red line, so the fraction of the
+            // track to fill is the reading times where that line sits.
+            SetBarWidth(BeatTriggerBar, _displayedTriggerRatio * TriggerPointFraction);
+
+            BeatLamp.Background = features.SecondsSinceBeat <= BeatLampSeconds
+                ? BeatLampLitBrush
+                : BeatLampUnlitBrush;
+        }
+
+        /// <summary>
+        /// Runs whenever the beat size slider moves.
+        ///
+        /// Takes effect on the very next audio buffer, so the change can be
+        /// judged by ear while still dragging - which is the entire point of
+        /// having it on a slider rather than in the code.
+        /// </summary>
+        private void BeatSensitivitySlider_ValueChanged(
+            object sender,
+            RoutedPropertyChangedEventArgs<double> e)
+        {
+            // WPF raises this while the window is still being built, before the
+            // named elements exist.
+            if (BeatSensitivityValueTextBlock is null)
+            {
+                return;
+            }
+
+            _audio.BeatSensitivity = BeatSensitivitySlider.Value;
+            BeatSensitivityValueTextBlock.Text = $"{BeatSensitivitySlider.Value:F2}x";
+        }
+
+        /// <summary>
+        /// Runs whenever the beat gap slider moves.
+        /// </summary>
+        private void BeatGapSlider_ValueChanged(
+            object sender,
+            RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (BeatGapValueTextBlock is null)
+            {
+                return;
+            }
+
+            _audio.MinimumSecondsBetweenBeats = BeatGapSlider.Value;
+            BeatGapValueTextBlock.Text = $"{BeatGapSlider.Value:F2}s";
         }
 
         /// <summary>

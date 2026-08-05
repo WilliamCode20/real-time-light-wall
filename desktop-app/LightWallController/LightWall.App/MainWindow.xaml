@@ -472,6 +472,172 @@
                                Margin="12,0,0,0"/>
                 </Grid>
 
+                <!--
+                    Beat detection.
+
+                    These two settings decide what counts as a beat. Both have
+                    to be set by ear, because the right answer depends on the
+                    music - so they are sliders rather than numbers buried in
+                    the code, and there is a meter below showing what they are
+                    doing.
+
+                    Pick an effect that reacts to beats (Beat Flash is the
+                    plainest) and adjust while something is playing.
+                -->
+                <TextBlock Text="Beat detection"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="White"
+                           Margin="0,6,0,8"/>
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="Beat size"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,0"/>
+
+                    <Slider x:Name="BeatSensitivitySlider"
+                            Grid.Column="1"
+                            Minimum="1"
+                            Maximum="3"
+                            Value="1.4"
+                            TickFrequency="0.05"
+                            SmallChange="0.05"
+                            LargeChange="0.1"
+                            VerticalAlignment="Center"
+                            ToolTip="How big a jump has to be to count as a beat. Flashing too often means raise it; missing obvious hits means lower it."
+                            ValueChanged="BeatSensitivitySlider_ValueChanged"/>
+
+                    <TextBlock x:Name="BeatSensitivityValueTextBlock"
+                               Grid.Column="2"
+                               Text="1.40x"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,0"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="Beat gap"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,0"/>
+
+                    <Slider x:Name="BeatGapSlider"
+                            Grid.Column="1"
+                            Minimum="0.05"
+                            Maximum="0.3"
+                            Value="0.12"
+                            TickFrequency="0.01"
+                            SmallChange="0.01"
+                            LargeChange="0.02"
+                            VerticalAlignment="Center"
+                            ToolTip="The shortest gap allowed between two beats. Raise it if one drum hit is being counted twice."
+                            ValueChanged="BeatGapSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="BeatGapValueTextBlock"
+                               Grid.Column="2"
+                               Text="0.12s"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,0"/>
+                </Grid>
+
+                <!--
+                    The trigger meter.
+
+                    The bar is how close the sound is right now to being counted
+                    as a beat, and the red line is the point it has to reach.
+                    Bar short of the line means nothing is being detected; bar
+                    permanently past it means the setting is too low.
+
+                    The lamp on the right lights when a beat is actually
+                    reported. It is separate from the bar on purpose: reaching
+                    the line is necessary but not sufficient, because a beat also
+                    has to be on the way up and far enough after the last one.
+                    Watching both together is what tells you which of those is
+                    getting in the way.
+                -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="Trigger"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="White"
+                               Margin="0,0,10,0"/>
+
+                    <Border Grid.Column="1"
+                            Height="22"
+                            Background="#1A1A1A"
+                            BorderBrush="#444444"
+                            BorderThickness="1">
+                        <!--
+                            The two columns exist only to place the red line at a
+                            fixed fraction of the width - 2 parts to 3 puts it
+                            two fifths of the way across. Doing it with column
+                            widths rather than from code means it stays put when
+                            the window is resized, with nothing to keep in step.
+
+                            The bar spans both columns so it can grow past the
+                            line. Full width is two and a half times the trigger
+                            point, which is far enough to see a big hit without
+                            squashing normal readings into nothing.
+                        -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="3*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Rectangle x:Name="BeatTriggerBar"
+                                       Grid.Column="0"
+                                       Grid.ColumnSpan="2"
+                                       HorizontalAlignment="Left"
+                                       Fill="#44DD88"
+                                       Width="0"/>
+
+                            <Rectangle Grid.Column="1"
+                                       HorizontalAlignment="Left"
+                                       Width="2"
+                                       Fill="#FF5555"/>
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="BeatLamp"
+                            Grid.Column="2"
+                            Width="22"
+                            Height="22"
+                            CornerRadius="11"
+                            Margin="10,0,0,0"
+                            Background="#2A2A2A"
+                            BorderBrush="#444444"
+                            BorderThickness="1"
+                            ToolTip="Lights on every detected beat."/>
+                </Grid>
+
                 <Border Background="#232323"
                         BorderBrush="#444444"
                         BorderThickness="1"

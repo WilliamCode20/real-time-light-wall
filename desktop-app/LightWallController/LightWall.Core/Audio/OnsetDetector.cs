@@ -109,6 +109,39 @@ namespace LightWall.Core.Audio
         public double CurrentThreshold { get; private set; }
 
         /// <summary>
+        /// How close the last reading came to counting as a beat, where 1.0
+        /// means "exactly on the line".
+        ///
+        /// WHY THIS EXISTS
+        ///
+        /// Sensitivity has to be set by ear, and the only feedback available
+        /// otherwise is whether the wall flashed. That tells you a hit was
+        /// missed but not by how much - and "missed by a hair" and "missed by
+        /// miles" need opposite responses. One says nudge the slider, the other
+        /// says the slider is the wrong thing to be touching.
+        ///
+        /// So this reports the size of the gap rather than just which side of it
+        /// the reading landed on.
+        ///
+        /// WHAT IT IS MEASURED AGAINST
+        ///
+        /// A reading has to clear two separate bars: the moving threshold, and
+        /// the minimum flux that stops near-silence triggering. Whichever is
+        /// higher at the time is the one that actually matters, so that is what
+        /// this compares against. Showing it against the threshold alone would
+        /// read as 3.0 during silence, when in truth nothing was close to firing.
+        ///
+        /// AN IMPORTANT LIMIT
+        ///
+        /// Reaching 1.0 does NOT mean a beat was reported. Two of the four
+        /// guards are about timing rather than size - the reading must still be
+        /// rising, and enough time must have passed since the last beat - and
+        /// neither is visible here. A run of readings sitting just above 1.0
+        /// with no beats is the normal, correct look of a sustained note.
+        /// </summary>
+        public double TriggerRatio { get; private set; }
+
+        /// <summary>
         /// Feeds in the latest frequency readings and reports whether a beat
         /// just started.
         /// </summary>
@@ -131,6 +164,7 @@ namespace LightWall.Core.Audio
 
             CurrentFlux = flux;
             CurrentThreshold = ComputeThreshold();
+            TriggerRatio = ComputeTriggerRatio(flux, CurrentThreshold);
 
             bool isBeat = IsOnset(flux, nowSeconds);
 
@@ -160,6 +194,38 @@ namespace LightWall.Core.Audio
 
             CurrentFlux = 0.0;
             CurrentThreshold = 0.0;
+            TriggerRatio = 0.0;
+        }
+
+        /// <summary>
+        /// Works out how close a reading came to being big enough to count.
+        /// See TriggerRatio.
+        /// </summary>
+        private double ComputeTriggerRatio(double flux, double threshold)
+        {
+            // Whichever guard is higher is the one the reading actually has to
+            // beat, so that is what to measure against.
+            double barToClear = Math.Max(threshold, MinimumFlux);
+
+            // Before enough history has built up, ComputeThreshold returns the
+            // largest number there is, meaning "not ready to judge yet". Dividing
+            // by it would give a ratio so small it displays as nothing, which is
+            // the right answer, but it is clearer to say so outright.
+            if (double.IsInfinity(barToClear) || barToClear >= double.MaxValue)
+            {
+                return 0.0;
+            }
+
+            // MinimumFlux is a fixed positive number, so barToClear cannot be
+            // zero and this cannot divide by zero. Worth stating, because the
+            // threshold on its own genuinely does reach zero during silence -
+            // the history fills up with zeroes and their average is zero.
+            if (barToClear <= 0.0)
+            {
+                return 0.0;
+            }
+
+            return flux / barToClear;
         }
 
         /// <summary>

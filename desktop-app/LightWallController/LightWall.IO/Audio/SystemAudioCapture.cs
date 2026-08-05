@@ -142,6 +142,66 @@ namespace LightWall.IO.Audio
         }
 
         /// <summary>
+        /// How big a jump has to be before it counts as a beat, as a multiple of
+        /// how big the jumps in this music have been lately.
+        ///
+        /// Higher finds only the obvious hits; lower finds more, and eventually
+        /// starts reporting ordinary texture as beats. This is what the Beat
+        /// Sensitivity slider sets. See OnsetDetector.Sensitivity.
+        ///
+        /// Note that this is a completely separate thing from the Sensitivity
+        /// property above, which is about how hard the bars bump. They are named
+        /// alike because both are called sensitivity in ordinary speech, but one
+        /// changes how the wall reacts to loudness and this one changes what
+        /// counts as a beat at all.
+        /// </summary>
+        public double BeatSensitivity
+        {
+            get => _analyser.Onsets.Sensitivity;
+            set => _analyser.Onsets.Sensitivity = value;
+        }
+
+        /// <summary>
+        /// The shortest gap allowed between two beats, in seconds.
+        ///
+        /// Raise it if one drum hit is being reported as two or three. See
+        /// OnsetDetector.MinimumSecondsBetweenBeats.
+        /// </summary>
+        public double MinimumSecondsBetweenBeats
+        {
+            get => _analyser.Onsets.MinimumSecondsBetweenBeats;
+            set => _analyser.Onsets.MinimumSecondsBetweenBeats = value;
+        }
+
+        /// <summary>
+        /// How close the most recent reading came to counting as a beat, where
+        /// 1.0 means it was exactly on the line. Shown as a meter while tuning.
+        /// See OnsetDetector.TriggerRatio, which explains what this can and
+        /// cannot tell you.
+        /// </summary>
+        public double BeatTriggerRatio => _analyser.Onsets.TriggerRatio;
+
+        // WHY THE SETTINGS ABOVE ARE SAFE TO CHANGE FROM THE INTERFACE
+        //
+        // Those properties cross a thread boundary: the window writes them while
+        // the audio thread is reading them, with no lock anywhere.
+        //
+        // That is fine here, and it is worth saying why rather than assuming it.
+        // Each is a single number, so a reader gets either the old value or the
+        // new one, never a half-written mixture. And nothing reads two of them
+        // together and needs them to agree - each guard is applied on its own.
+        // The worst case is that one audio buffer out of a hundred is judged
+        // with the old setting, which nobody can hear or see.
+        //
+        // This is the same reasoning that already covers the Sensitivity and
+        // Smoothing sliders, which have worked this way from the start.
+        //
+        // It would NOT be safe if a setting needed several values changed
+        // together to stay consistent. If that ever comes up, the fix is to swap
+        // in a whole new settings object by reference, the way AudioFeatures
+        // snapshots already do - not to start adding locks to the audio path.
+
+        /// <summary>
         /// The reference level the automatic adjustment is currently working
         /// against. Shown in the interface, because seeing it move is the
         /// clearest way to tell the adjustment is doing something.
