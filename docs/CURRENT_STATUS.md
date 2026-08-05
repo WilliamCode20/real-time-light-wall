@@ -156,13 +156,56 @@ deserve different answers.
 **No sine wave anywhere.** An earlier version used a travelling sine wave to vary
 the height across columns. It was actively misleading — peaks rolled across the
 wall that had nothing to do with the music, making it impossible to tell at a
-glance whether the wall was really following the sound. An effect that invents
-movement makes the real movement harder to trust.
+glance whether the wall was really following the sound. Everything the wall does
+now is measured.
 
-**All seven columns therefore move together**, because overall loudness is the
-only number describing the music so far. That is the honest picture of what is
-currently measured. Frequency bands are what will make columns differ for
-measured reasons.
+### Frequency bands
+
+`FourierTransform` (written out in Core rather than taken from NAudio, so the
+whole analysis chain stays testable with no audio hardware) splits the sound into
+seven bands, one per wall column. Bass on the left, treble on the right, the way
+every equaliser display reads.
+
+Band ranges are spaced logarithmically because hearing works in ratios: the gap
+from 100 to 200 Hz sounds like the same musical distance as 1000 to 2000 Hz.
+Evenly spaced bands would put nearly everything musical into the first column.
+
+**Each band has its own automatic gain.** This is what makes the high columns
+usable at all. Bass typically carries a hundred times the energy of treble, so
+measured against a shared reference the treble columns would never move. Measured
+against its own recent history, a quiet hi-hat is loud *for a hi-hat*.
+
+Verified: a bass tone lights the low columns and leaves the high ones dark, a
+treble tone does the reverse, and a quiet treble tone still fills its own column.
+
+**One reasoning error worth recording.** Band strength was first computed by
+averaging the frequency bins in each range, on the argument that wide bands would
+otherwise dominate. That was wrong twice over: a hi-hat occupying two of two
+hundred bins got divided into nothing, so the treble columns read exactly zero;
+and the concern about wide bands was unfounded anyway, since per-band gain
+normalises whatever scale a band naturally sits at. It now sums the squares and
+takes the root, which is the actual energy in that stretch of spectrum and gives
+a pure tone the same reading regardless of band width.
+
+### Latency budget
+
+Roughly 60–90 ms worst case from sound to bulb:
+
+| Stage | Cost |
+|---|---|
+| Windows audio buffer | ~10 ms |
+| FFT window (1024 samples) | ~21 ms |
+| Attack smoothing | 5–10 ms |
+| Engine tick at 120 Hz | ~8 ms |
+| Output rate limit at 30 Hz | ~33 ms |
+| Serial | ~1 ms |
+| Zero-cross relay | ~8 ms |
+
+The largest controllable cost is the output rate limit, not anything audio-side.
+Raising it to 60 Hz would halve that and is within what the original show
+demonstrated, at the cost of more relay switching. The FFT window is the audio
+trade: halving it halves that delay but leaves the bass resolved by barely one
+bin. The relay's ~8 ms is physics and cannot be recovered.
 
 ### Automatic volume adjustment
 

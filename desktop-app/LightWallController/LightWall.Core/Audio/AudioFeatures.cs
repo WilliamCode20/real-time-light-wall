@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace LightWall.Core.Audio
 {
@@ -31,16 +32,29 @@ namespace LightWall.Core.Audio
         /// A snapshot representing silence, used before any audio has arrived
         /// and whenever nothing is playing.
         /// </summary>
-        public static readonly AudioFeatures Silence = new(0.0, 0.0, 0.0, 0.0, isSilent: true);
+        public static readonly AudioFeatures Silence =
+            new(0.0, 0.0, 0.0, 0.0, new double[FrequencyBands.Count], isSilent: true);
+
+        /// <summary>
+        /// How strong each frequency band is. See BandLevels.
+        /// </summary>
+        private readonly double[] _bandLevels;
 
         /// <summary>
         /// Creates a snapshot.
         /// </summary>
+        /// <param name="bandLevels">
+        /// One level per frequency band. The array is taken as-is rather than
+        /// copied, so whoever supplies it must never change it afterwards -
+        /// which is the whole basis on which these snapshots are safe to share
+        /// between threads.
+        /// </param>
         public AudioFeatures(
             double rms,
             double peak,
             double level,
             double normalisedLevel,
+            double[] bandLevels,
             bool isSilent)
         {
             Rms = rms;
@@ -48,6 +62,15 @@ namespace LightWall.Core.Audio
             Level = level;
             NormalisedLevel = normalisedLevel;
             IsSilent = isSilent;
+
+            _bandLevels = bandLevels ?? throw new ArgumentNullException(nameof(bandLevels));
+
+            if (_bandLevels.Length != FrequencyBands.Count)
+            {
+                throw new ArgumentException(
+                    $"Expected {FrequencyBands.Count} band levels, got {_bandLevels.Length}.",
+                    nameof(bandLevels));
+            }
         }
 
         /// <summary>
@@ -106,6 +129,39 @@ namespace LightWall.Core.Audio
         /// See AudioGainController for both.
         /// </summary>
         public double NormalisedLevel { get; }
+
+        /// <summary>
+        /// How strong each frequency band is right now, from 0 to 1.
+        ///
+        /// Band 0 is the lowest - the thump of a kick drum - and band 6 the
+        /// highest, where cymbals live. There is one per wall column, so band N
+        /// naturally drives column N.
+        ///
+        /// Each band is measured against its own recent history rather than
+        /// against the others. That matters enormously: bass typically carries a
+        /// hundred times the energy of treble, so measured against a shared
+        /// reference the high columns would never move at all. Measured against
+        /// itself, a quiet hi-hat is loud *for a hi-hat* and lights its column
+        /// properly.
+        /// </summary>
+        public IReadOnlyList<double> BandLevels => _bandLevels;
+
+        /// <summary>
+        /// Reads one band's level, or 0 if asked for a band that does not exist.
+        ///
+        /// Forgiving on purpose. Effects index this with a column number, and a
+        /// wall of a different width should produce a dark column rather than a
+        /// crash.
+        /// </summary>
+        public double GetBandLevel(int band)
+        {
+            if (band < 0 || band >= _bandLevels.Length)
+            {
+                return 0.0;
+            }
+
+            return _bandLevels[band];
+        }
 
         /// <summary>
         /// True when nothing is playing.

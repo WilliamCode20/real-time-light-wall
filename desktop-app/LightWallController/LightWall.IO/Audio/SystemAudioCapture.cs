@@ -58,9 +58,14 @@ namespace LightWall.IO.Audio
         private const double SilenceTimeoutSeconds = 0.2;
 
         /// <summary>
-        /// Does the smoothing. Only ever touched on the audio thread.
+        /// Does all the analysis - loudness, smoothing, automatic gain and the
+        /// frequency split. Only ever touched on the audio thread.
+        ///
+        /// Everything it does is arithmetic and lives in Core, so it can be
+        /// tested with no sound card and nothing playing. What is left in this
+        /// class is only the plumbing.
         /// </summary>
-        private readonly AudioLevelTracker _tracker = new();
+        private readonly AudioAnalyser _analyser = new();
 
         /// <summary>
         /// Measures the gap between buffers, so smoothing stays correct
@@ -96,33 +101,34 @@ namespace LightWall.IO.Audio
         public string? LastError { get; private set; }
 
         /// <summary>
-        /// How quickly the level rises. See AudioLevelTracker.
+        /// How quickly the overall level rises. See AudioLevelTracker.
         /// </summary>
         public double AttackSeconds
         {
-            get => _tracker.AttackSeconds;
-            set => _tracker.AttackSeconds = value;
+            get => _analyser.Level.AttackSeconds;
+            set => _analyser.Level.AttackSeconds = value;
         }
 
         /// <summary>
-        /// How slowly the level falls. See AudioLevelTracker.
+        /// How slowly the overall level falls. See AudioLevelTracker.
         /// </summary>
         public double ReleaseSeconds
         {
-            get => _tracker.ReleaseSeconds;
-            set => _tracker.ReleaseSeconds = value;
+            get => _analyser.Level.ReleaseSeconds;
+            set => _analyser.Level.ReleaseSeconds = value;
         }
 
         /// <summary>
-        /// A manual multiplier on top of the automatic volume adjustment.
+        /// A manual multiplier on top of the automatic volume adjustment,
+        /// applying to the overall level and every frequency band alike.
         ///
         /// 1.0 leaves it as measured. Higher makes the wall bump harder; lower
         /// makes it more restrained. This is what the Sensitivity slider sets.
         /// </summary>
         public double Sensitivity
         {
-            get => _tracker.Gain.Gain;
-            set => _tracker.Gain.Gain = value;
+            get => _analyser.Sensitivity;
+            set => _analyser.Sensitivity = value;
         }
 
         /// <summary>
@@ -130,7 +136,7 @@ namespace LightWall.IO.Audio
         /// against. Shown in the interface, because seeing it move is the
         /// clearest way to tell the adjustment is doing something.
         /// </summary>
-        public double GainReference => _tracker.Gain.Reference;
+        public double GainReference => _analyser.GainReference;
 
         /// <summary>
         /// Starts listening to the default playback device.
@@ -162,7 +168,12 @@ namespace LightWall.IO.Audio
                 _capture.DataAvailable += OnDataAvailable;
                 _capture.RecordingStopped += OnRecordingStopped;
 
-                _tracker.Reset();
+                // Tell the analyser what rate this device mixes at, so it knows
+                // which frequency each transform output corresponds to. Get this
+                // wrong and every band would be reading the wrong frequencies.
+                _analyser.SampleRate = _capture.WaveFormat.SampleRate;
+
+                _analyser.Reset();
                 _latest = AudioFeatures.Silence;
 
                 _clock.Restart();
@@ -228,7 +239,7 @@ namespace LightWall.IO.Audio
             // buffer, so the decay runs at a steady rate however often this is
             // called.
             _lastBufferSeconds = now;
-            _latest = _tracker.UpdateSilent(sinceLastBuffer);
+            _latest = _analyser.ProcessSilence(sinceLastBuffer);
         }
 
         /// <summary>
@@ -278,15 +289,16 @@ namespace LightWall.IO.Audio
                 ReadOnlySpan<float> samples = System.Runtime.InteropServices.MemoryMarshal
                     .Cast<byte, float>(e.Buffer.AsSpan(0, e.BytesRecorded));
 
-                (double rms, double peak) = AudioSampleMath.Analyse(samples);
-
                 double now = _clock.Elapsed.TotalSeconds;
                 double delta = now - _lastBufferSeconds;
                 _lastBufferSeconds = now;
 
+                // Hand the raw samples to Core and let it do everything -
+                // loudness, smoothing, automatic gain, the frequency split.
+                //
                 // Build a new snapshot and swap it in. Readers on other threads
                 // see either the old one or this one, never a mixture.
-                _latest = _tracker.Update(rms, peak, delta);
+                _latest = _analyser.Process(samples, format.Channels, delta);
             }
             catch (Exception ex)
             {

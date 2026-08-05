@@ -97,15 +97,31 @@ These are load-bearing. Breaking them causes real problems later.
 6. **Adding an effect means adding one entry to `EffectCatalog`.** The window
    builds its buttons from the catalog. Do not hard-code effect buttons in XAML.
 
-7. **Shared state crosses threads only as a copy, taken under a lock.** Two
-   background threads exist — the show clock and the output service. Neither
-   reaches into anything else's state. This is the pattern audio will use when
-   analysis arrives on a callback thread.
+7. **Shared state crosses threads only as a copy, taken under a lock.** Three
+   background threads exist — the show clock, the output service, and the audio
+   callback. None reaches into anything else's state. Audio goes further and
+   takes no lock at all: `AudioFeatures` snapshots are immutable and swapped by
+   reference, so a reader sees one complete moment or the previous one.
+
+9. **All audio analysis lives in Core, not IO.** `AudioAnalyser` is the front
+   door. Everything it does is arithmetic, so it can be tested against signals
+   whose answers are known in advance — feed in a 100 Hz tone, check the bass
+   band lights and the treble does not. `LightWall.IO` only asks Windows for
+   buffers and hands them over. Do not move analysis out to IO for convenience;
+   it becomes untestable the moment it needs a sound card.
+
+10. **Effects read audio through `EffectContext`, never from a device.** Adding
+    an effect touches no audio code; adding a measurement touches no effect
+    code. This is what keeps both sides manageable as they grow.
 
 8. **Output is rate-limited and never queued.** The wall is fed at 30 packets a
    second regardless of how fast the engine ticks, and frames generated in
    between are skipped rather than stored. Queueing would make the wall lag
    further behind reality over time; dropping keeps it at worst one frame late.
+
+   This is also the single largest controllable contributor to audio-to-light
+   latency (~33 ms worst case). Raising it to 60 Hz is within what the original
+   show demonstrated, if latency ever matters more than relay wear.
 
 ## The output pipeline
 

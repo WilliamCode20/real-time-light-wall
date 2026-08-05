@@ -102,15 +102,11 @@ yet, which is deliberate.
 `AudioFeatures` reaches effects through `EffectContext`, and EQ Bumper follows
 the measured level. Verified against real audio playing.
 
-### 9. Frequency bands
+### 9. Frequency bands — DONE
 
-One overall level cannot distinguish a bass drum from a hi-hat, and a wall that
-pulses uniformly to everything looks far less musical than one where the bottom
-row follows the kick.
-
-Needs an FFT — NAudio includes one. Split into bass, mid and treble, each with
-its own level tracker. Same testing approach: the band-splitting maths goes in
-Core with known inputs, the FFT plumbing stays in IO.
+Seven bands, one per column, bass on the left. Each with its own automatic gain,
+which is what makes the treble columns usable. The FFT is written out in Core so
+the whole chain is testable without audio hardware.
 
 ### 10. Onset and beat detection
 

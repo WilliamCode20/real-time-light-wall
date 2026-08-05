@@ -26,16 +26,20 @@ namespace LightWall.Tests
             IWallEffect effect,
             double level,
             double timeSeconds = 0.0,
-            bool isAudioActive = true)
+            bool isAudioActive = true,
+            double[]? bandLevels = null)
         {
-            // The level given here is the one that drives visuals, so it goes
-            // into NormalisedLevel. Raw Level is set to the same value; effects
-            // should not be reading it.
+            // By default every band gets the same level, which stands in for
+            // broadband sound - a wash of noise rather than a specific
+            // instrument. Tests wanting one band to differ pass their own array.
+            double[] bands = bandLevels ?? CreateBands(level);
+
             var features = new AudioFeatures(
                 rms: level,
                 peak: level,
                 level: level,
                 normalisedLevel: level,
+                bandLevels: bands,
                 isSilent: level <= 0.0);
             var context = new EffectContext(
                 timeSeconds,
@@ -47,6 +51,21 @@ namespace LightWall.Tests
             var frame = new WallFrame();
             effect.Render(context, frame);
             return frame;
+        }
+
+        /// <summary>
+        /// Builds a set of band levels all at the same value.
+        /// </summary>
+        private static double[] CreateBands(double level)
+        {
+            var bands = new double[FrequencyBands.Count];
+
+            for (int i = 0; i < bands.Length; i++)
+            {
+                bands[i] = level;
+            }
+
+            return bands;
         }
 
         // ------------------------------------------------------------------
@@ -129,41 +148,62 @@ namespace LightWall.Tests
         }
 
         [Fact]
-        public void EqBumper_MovesEveryColumnTogether()
+        public void EqBumper_GivesEachColumnItsOwnFrequencyBand()
         {
-            // Documents an honest limitation rather than a design goal.
-            //
-            // Overall loudness is the only number describing the music so far,
-            // so every column gets the same value and the wall rises and falls
-            // as one block. Making the columns differ would mean inventing the
-            // difference, which is exactly what removing the sine wave was
-            // about.
-            //
-            // Frequency bands are the real fix. When they arrive this test
-            // should be replaced by one asserting the columns differ for
-            // measured reasons.
+            // The whole point of the frequency split. A sound with energy only
+            // in the low end should light the left of the wall and leave the
+            // right dark - a kick drum, not a wash of noise.
             var effect = new EqBumperEffect();
 
-            WallFrame frame = RenderWithAudio(effect, level: 0.6);
+            var bassOnly = new double[FrequencyBands.Count];
+            bassOnly[0] = 1.0;
+            bassOnly[1] = 0.8;
 
-            var heights = new System.Collections.Generic.HashSet<int>();
+            WallFrame frame = RenderWithAudio(effect, level: 0.5, bandLevels: bassOnly);
 
-            for (int column = 0; column < WallFrame.Columns; column++)
+            Assert.Equal(WallFrame.Rows, ColumnHeight(frame, 0));
+            Assert.Equal(4, ColumnHeight(frame, 1));
+
+            // Everything above the bass stays dark.
+            for (int column = 2; column < WallFrame.Columns; column++)
             {
-                int height = 0;
+                Assert.Equal(0, ColumnHeight(frame, column));
+            }
+        }
 
-                for (int row = 0; row < WallFrame.Rows; row++)
+        [Fact]
+        public void EqBumper_PutsLowFrequenciesOnTheLeft()
+        {
+            // Reading left to right as low to high is the convention every
+            // equaliser display uses, and getting it backwards would look
+            // subtly wrong to anyone who has seen one.
+            var effect = new EqBumperEffect();
+
+            var trebleOnly = new double[FrequencyBands.Count];
+            trebleOnly[FrequencyBands.Count - 1] = 1.0;
+
+            WallFrame frame = RenderWithAudio(effect, level: 0.5, bandLevels: trebleOnly);
+
+            Assert.Equal(0, ColumnHeight(frame, 0));
+            Assert.Equal(WallFrame.Rows, ColumnHeight(frame, WallFrame.Columns - 1));
+        }
+
+        /// <summary>
+        /// Counts how many rows are lit in one column.
+        /// </summary>
+        private static int ColumnHeight(WallFrame frame, int column)
+        {
+            int height = 0;
+
+            for (int row = 0; row < WallFrame.Rows; row++)
+            {
+                if (frame.GetCell(row, column))
                 {
-                    if (frame.GetCell(row, column))
-                    {
-                        height++;
-                    }
+                    height++;
                 }
-
-                heights.Add(height);
             }
 
-            Assert.Single(heights);
+            return height;
         }
 
         [Fact]
@@ -280,13 +320,13 @@ namespace LightWall.Tests
             var effect = new EqBumperEffect();
 
             engine.IsAudioActive = true;
-            engine.CurrentAudio = new AudioFeatures(0.0, 0.0, 0.0, 0.0, isSilent: true);
+            engine.CurrentAudio = new AudioFeatures(0.0, 0.0, 0.0, 0.0, CreateBands(0.0), isSilent: true);
             engine.Play(effect);
 
             Assert.Equal(0, engine.CurrentFrame.CountLitCells());
 
             // Turn the music up and the wall should respond on the next frame.
-            engine.CurrentAudio = new AudioFeatures(0.8, 0.9, 0.9, 0.9, isSilent: false);
+            engine.CurrentAudio = new AudioFeatures(0.8, 0.9, 0.9, 0.9, CreateBands(0.9), isSilent: false);
             engine.Advance(0.01);
 
             Assert.True(
@@ -334,7 +374,7 @@ namespace LightWall.Tests
             var source = new FakeAudioSource
             {
                 IsRunning = true,
-                CurrentFeatures = new AudioFeatures(0.7, 0.8, 0.85, 0.85, isSilent: false)
+                CurrentFeatures = new AudioFeatures(0.7, 0.8, 0.85, 0.85, CreateBands(0.85), isSilent: false)
             };
 
             clock.AudioSource = source;
