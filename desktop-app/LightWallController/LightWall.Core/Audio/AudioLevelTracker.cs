@@ -41,6 +41,12 @@ namespace LightWall.Core.Audio
         private double _level;
 
         /// <summary>
+        /// Removes the effect of the system volume setting and shapes the
+        /// response. See AudioGainController.
+        /// </summary>
+        public AudioGainController Gain { get; } = new();
+
+        /// <summary>
         /// How quickly the level rises towards a louder reading, in seconds.
         ///
         /// Very short on purpose. A beat should land on the wall at the moment
@@ -101,7 +107,11 @@ namespace LightWall.Core.Audio
 
             _level = MoveTowards(_level, target, timeConstant, deltaSeconds);
 
-            return new AudioFeatures(rms, peak, _level, isSilent: false);
+            // Then remove the influence of the volume knob, so the wall behaves
+            // the same whether the computer is at half volume or full.
+            double normalised = Gain.Normalise(_level, deltaSeconds);
+
+            return new AudioFeatures(rms, peak, _level, normalised, isSilent: false);
         }
 
         /// <summary>
@@ -119,7 +129,9 @@ namespace LightWall.Core.Audio
         {
             _level = MoveTowards(_level, 0.0, ReleaseSeconds, deltaSeconds);
 
-            return new AudioFeatures(0.0, 0.0, _level, isSilent: true);
+            double normalised = Gain.Normalise(_level, deltaSeconds);
+
+            return new AudioFeatures(0.0, 0.0, _level, normalised, isSilent: true);
         }
 
         /// <summary>
@@ -128,6 +140,7 @@ namespace LightWall.Core.Audio
         public void Reset()
         {
             _level = 0.0;
+            Gain.Reset();
         }
 
         /// <summary>

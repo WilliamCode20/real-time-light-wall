@@ -1,4 +1,5 @@
 using System;
+using LightWall.Core.Audio;
 using LightWall.Core.Effects;
 using LightWall.Core.Models;
 
@@ -161,6 +162,27 @@ namespace LightWall.Core.Engine
         public double SpeedMultiplier { get; set; } = 1.0;
 
         /// <summary>
+        /// What the music is doing, handed to effects when they draw.
+        ///
+        /// The engine does no analysis and knows nothing about sound cards. It
+        /// simply carries whatever it was last given through to the effects, in
+        /// the same way it carries the slider settings.
+        ///
+        /// WallShowClock refreshes this on every tick from whatever audio source
+        /// is attached. Tests set it directly, which is what makes
+        /// audio-reactive behaviour testable without any music playing.
+        /// </summary>
+        public AudioFeatures CurrentAudio { get; set; } = AudioFeatures.Silence;
+
+        /// <summary>
+        /// Whether audio capture is running.
+        ///
+        /// See EffectContext.IsAudioActive for why this is kept separate from
+        /// the level simply being zero.
+        /// </summary>
+        public bool IsAudioActive { get; set; }
+
+        /// <summary>
         /// Shifts the picture down (positive) or up (negative) before display.
         /// This is what the Center Y slider controls.
         /// </summary>
@@ -289,7 +311,12 @@ namespace LightWall.Core.Engine
             }
 
             // Stage 1: the effect paints its picture.
-            var context = new EffectContext(_effectTimeSeconds, Parameters, _sessionSeed);
+            var context = new EffectContext(
+                _effectTimeSeconds,
+                Parameters,
+                _sessionSeed,
+                CurrentAudio,
+                IsAudioActive);
             ActiveEffect.Render(context, _effectFrame);
 
             // Stage 2: shift it according to the offset sliders.

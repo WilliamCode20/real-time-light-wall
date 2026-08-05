@@ -114,6 +114,25 @@ namespace LightWall.IO.Audio
         }
 
         /// <summary>
+        /// A manual multiplier on top of the automatic volume adjustment.
+        ///
+        /// 1.0 leaves it as measured. Higher makes the wall bump harder; lower
+        /// makes it more restrained. This is what the Sensitivity slider sets.
+        /// </summary>
+        public double Sensitivity
+        {
+            get => _tracker.Gain.Gain;
+            set => _tracker.Gain.Gain = value;
+        }
+
+        /// <summary>
+        /// The reference level the automatic adjustment is currently working
+        /// against. Shown in the interface, because seeing it move is the
+        /// clearest way to tell the adjustment is doing something.
+        /// </summary>
+        public double GainReference => _tracker.Gain.Reference;
+
+        /// <summary>
         /// Starts listening to the default playback device.
         /// </summary>
         public void Start()

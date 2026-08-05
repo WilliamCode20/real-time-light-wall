@@ -97,20 +97,10 @@ WASAPI loopback capture, RMS/peak measurement, decibel mapping and attack/releas
 smoothing, with a level meter in the interface. Nothing drives the wall from it
 yet, which is deliberate.
 
-### 8. Wire audio into the engine
+### 8. Wire audio into the engine — DONE
 
-The next audio step, and a small one. `AudioFeatures` needs to reach
-`EffectContext` so effects can read the level the same way they read time.
-
-The route is already clear: `WallShowClock` holds a reference to the
-`IAudioSource`, reads `CurrentFeatures` when it builds each context, and the
-engine passes it through. No locking needed on the audio side — snapshots are
-immutable and swapped atomically.
-
-Then make one effect react. **EQ Bumper is the obvious first candidate**: it
-already computes one height per column, and its comment has always said the sine
-wave is a placeholder for real measured energy. Swapping that for audio is the
-smallest possible change that produces a genuinely music-reactive wall.
+`AudioFeatures` reaches effects through `EffectContext`, and EQ Bumper follows
+the measured level. Verified against real audio playing.
 
 ### 9. Frequency bands
 

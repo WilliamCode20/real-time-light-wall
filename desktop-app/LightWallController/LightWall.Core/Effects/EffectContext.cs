@@ -1,4 +1,5 @@
 using System;
+using LightWall.Core.Audio;
 
 namespace LightWall.Core.Effects
 {
@@ -59,11 +60,32 @@ namespace LightWall.Core.Effects
         /// twice and you get the same visual sequence twice, which is exactly
         /// what tests want.
         /// </param>
-        public EffectContext(double timeSeconds, EffectParameters parameters, int sessionSeed)
+        /// <param name="audio">
+        /// What the music was doing at this instant. Defaults to silence, so
+        /// every existing caller that does not care about audio keeps working
+        /// unchanged.
+        /// </param>
+        /// <param name="isAudioActive">
+        /// Whether anything is actually listening.
+        ///
+        /// This is deliberately separate from "the level is zero". An effect
+        /// needs to tell the difference between nobody having started audio
+        /// capture at all — in which case it should carry on doing something
+        /// watchable — and capture running with the music paused, in which case
+        /// going dark is the correct and honest response.
+        /// </param>
+        public EffectContext(
+            double timeSeconds,
+            EffectParameters parameters,
+            int sessionSeed,
+            AudioFeatures? audio = null,
+            bool isAudioActive = false)
         {
             TimeSeconds = timeSeconds;
             Parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _sessionSeed = sessionSeed;
+            Audio = audio ?? AudioFeatures.Silence;
+            IsAudioActive = isAudioActive;
         }
 
         /// <summary>
@@ -78,6 +100,30 @@ namespace LightWall.Core.Effects
         /// The current slider settings the user can adjust while watching.
         /// </summary>
         public EffectParameters Parameters { get; }
+
+        /// <summary>
+        /// What the music is doing right now.
+        ///
+        /// This is the point the whole audio side of the project has been
+        /// building towards: effects read this exactly the way they read
+        /// TimeSeconds, and neither they nor anything around them needs to know
+        /// that it came from Windows, or WASAPI, or a sound card.
+        ///
+        /// Always safe to read. These snapshots can never change once created,
+        /// so this is a complete picture of one instant rather than something
+        /// being rewritten underneath.
+        /// </summary>
+        public AudioFeatures Audio { get; }
+
+        /// <summary>
+        /// True when audio capture is running.
+        ///
+        /// Distinct from the level being zero, and the difference matters. An
+        /// effect should behave differently when nobody has started listening
+        /// (carry on doing something watchable) than when it is listening and
+        /// the music has stopped (go dark, honestly).
+        /// </summary>
+        public bool IsAudioActive { get; }
 
         /// <summary>
         /// Converts the current time into a whole step number at whatever pace

@@ -278,10 +278,10 @@
                     with no room echo and no people talking, whatever program is
                     producing the sound.
 
-                    Nothing drives the wall from this yet. This layer only proves
-                    the audio arrives and is measured correctly - which is worth
-                    settling on its own, so that when lights do start reacting,
-                    anything odd is in the mapping rather than here.
+                    The EQ Bumper effect follows this level. Start listening and
+                    the wall tracks the music; stop the music and it falls dark.
+                    Without capture running, EQ Bumper drops back to a test
+                    pattern so it still shows something in the simulator.
                 -->
                 <TextBlock Text="Audio Capture"
                            FontSize="15"
@@ -289,7 +289,7 @@
                            Foreground="White"
                            Margin="0,0,0,4"/>
 
-                <TextBlock Text="Listens to what this computer is playing. Nothing drives the wall from it yet."
+                <TextBlock Text="Listens to what this computer is playing. Start it, then run EQ Bumper to see the wall follow the music."
                            FontSize="12"
                            Foreground="#999999"
                            TextWrapping="Wrap"
@@ -378,6 +378,48 @@
                                    Fill="#6699FF"
                                    Width="0"/>
                     </Border>
+                </Grid>
+
+                <!--
+                    Sensitivity.
+
+                    The wall already adjusts itself to the system volume, so this
+                    is for taste rather than for correction: how hard the bars
+                    should bump for a given piece of music.
+                -->
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="Sensitivity"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,0"/>
+
+                    <Slider x:Name="AudioSensitivitySlider"
+                            Grid.Column="1"
+                            Minimum="0.5"
+                            Maximum="3"
+                            Value="1"
+                            TickFrequency="0.1"
+                            SmallChange="0.1"
+                            LargeChange="0.25"
+                            VerticalAlignment="Center"
+                            ToolTip="How hard the bars bump. The wall already compensates for the system volume, so this is for taste."
+                            ValueChanged="AudioSensitivitySlider_ValueChanged"/>
+
+                    <TextBlock x:Name="AudioSensitivityValueTextBlock"
+                               Grid.Column="2"
+                               Text="1.0x"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="#DDDDDD"
+                               Margin="12,0,0,0"/>
                 </Grid>
 
                 <Border Background="#232323"

@@ -137,8 +137,55 @@ the attack, which is the part worth showing.
 nothing is playing, rather than sending zeros — so without a timeout the level
 would freeze wherever the music left it.
 
-Nothing drives the wall from audio yet. This layer only proves the capture and
-measurement are right.
+### Audio driving the wall
+
+`AudioFeatures` reaches effects through `EffectContext`, the same way elapsed
+time does. `WallShowClock` reads the latest snapshot on each tick and hands it to
+the engine; the engine passes it through. No locking on the audio side, because
+snapshots are immutable and swapped whole.
+
+**EQ Bumper listens.** With capture running, bar heights follow the measured
+loudness: louder music means taller bars, and stopping the music lets the wall
+fall dark. With nothing listening it shows a single lit row — running and
+waiting, without inventing motion that might be mistaken for a response to sound.
+
+Those two cases are told apart by `EffectContext.IsAudioActive` rather than by
+the level being zero, because "nobody is listening" and "listening to silence"
+deserve different answers.
+
+**No sine wave anywhere.** An earlier version used a travelling sine wave to vary
+the height across columns. It was actively misleading — peaks rolled across the
+wall that had nothing to do with the music, making it impossible to tell at a
+glance whether the wall was really following the sound. An effect that invents
+movement makes the real movement harder to trust.
+
+**All seven columns therefore move together**, because overall loudness is the
+only number describing the music so far. That is the honest picture of what is
+currently measured. Frequency bands are what will make columns differ for
+measured reasons.
+
+### Automatic volume adjustment
+
+`AudioGainController` measures loudness against the loudest moment of the last
+few seconds rather than against absolute full scale. A reference level jumps up
+instantly to any new peak and drifts slowly down when nothing loud happens.
+
+The effect is that the system volume setting cancels out: the same music at half
+volume drives the wall to the same heights as at full. There is a test proving
+exactly that.
+
+The limitation worth knowing: it cannot distinguish quiet music from loud music
+played quietly, and left alone during a soft passage it would keep winding the
+gain up. `MinimumReference` is the floor below which it refuses to amplify, so
+real silence stays dark instead of turning room hiss into a light show.
+
+A response curve (`Contrast`) then pushes quiet and loud further apart so the
+bars use the whole height of the wall, and a Sensitivity slider gives manual
+control on top for taste.
+
+Note that a completely steady tone will correctly pin the bars at full height —
+it genuinely is constantly at its own recent maximum. Music with transients
+swings; a test signal without them does not.
 
 ### Serialization layer
 

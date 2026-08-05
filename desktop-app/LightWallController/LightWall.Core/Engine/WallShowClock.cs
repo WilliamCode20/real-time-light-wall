@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using LightWall.Core.Audio;
 using LightWall.Core.Effects;
 using LightWall.Core.Models;
 
@@ -109,6 +110,20 @@ namespace LightWall.Core.Engine
         /// window drawing at about 60 and the wall being fed at about 30.
         /// </summary>
         public double TickRateHz { get; init; } = 120.0;
+
+        /// <summary>
+        /// Where the music is listened to, or null when nothing is attached.
+        ///
+        /// The clock reads the latest reading on every tick and hands it to the
+        /// engine, which passes it through to whichever effect is playing.
+        ///
+        /// No lock is needed to read from it. Audio snapshots can never change
+        /// once created and are swapped in as whole objects, so this thread
+        /// always sees a complete picture of one moment. That is the same
+        /// principle used everywhere else in the project: share copies, never
+        /// mutable state.
+        /// </summary>
+        public IAudioSource? AudioSource { get; set; }
 
         /// <summary>True once Start has been called and the loop is running.</summary>
         public bool IsRunning => _running;
@@ -306,8 +321,18 @@ namespace LightWall.Core.Engine
                 double deltaSeconds = nowSeconds - lastElapsedSeconds;
                 lastElapsedSeconds = nowSeconds;
 
+                // Read the audio outside the lock. It costs nothing and takes no
+                // lock of its own, so there is no reason to make the interface
+                // thread wait behind it.
+                IAudioSource? audio = AudioSource;
+                AudioFeatures features = audio?.CurrentFeatures ?? AudioFeatures.Silence;
+                bool audioRunning = audio?.IsRunning ?? false;
+
                 lock (_gate)
                 {
+                    _engine.CurrentAudio = features;
+                    _engine.IsAudioActive = audioRunning;
+
                     _engine.Advance(deltaSeconds);
                     UpdateMeasuredRate(deltaSeconds);
                 }

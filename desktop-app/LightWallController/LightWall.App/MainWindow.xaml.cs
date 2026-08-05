@@ -279,6 +279,10 @@ namespace LightWall.App
 
             RefreshSerialPorts();
 
+            // Let the engine see the music. From here, any effect that wants to
+            // react to audio can simply read it from its EffectContext.
+            _clock.AudioSource = _audio;
+
             _clock.Start();
 
             // Attach the virtual wall straight away, so the whole output
@@ -780,7 +784,9 @@ namespace LightWall.App
 
             AudioFeatures features = _audio.CurrentFeatures;
 
-            SetBarWidth(AudioLevelBar, features.Level);
+            // The top bar shows the value that actually drives the wall, so what
+            // the meter does and what the bulbs do should always agree.
+            SetBarWidth(AudioLevelBar, features.NormalisedLevel);
             SetBarWidth(AudioPeakBar, features.Peak);
 
             if (_audio.LastError is not null)
@@ -797,8 +803,31 @@ namespace LightWall.App
 
             AudioStatusTextBlock.Text =
                 $"Listening to {_audio.Name}{Environment.NewLine}" +
-                $"level {features.Level:F2}   rms {features.Rms:F3}   peak {features.Peak:F3}" +
+                $"drives wall {features.NormalisedLevel:F2}   " +
+                $"raw level {features.Level:F2}   " +
+                $"auto-gain ref {_audio.GainReference:F2}" +
                 (features.IsSilent ? "   [silent]" : string.Empty);
+        }
+
+        /// <summary>
+        /// Runs whenever the sensitivity slider moves.
+        ///
+        /// Takes effect on the very next audio buffer, so the wall responds
+        /// while the slider is being dragged.
+        /// </summary>
+        private void AudioSensitivitySlider_ValueChanged(
+            object sender,
+            RoutedPropertyChangedEventArgs<double> e)
+        {
+            // WPF raises this while the window is still being built, before the
+            // named elements exist.
+            if (AudioSensitivityValueTextBlock is null)
+            {
+                return;
+            }
+
+            _audio.Sensitivity = AudioSensitivitySlider.Value;
+            AudioSensitivityValueTextBlock.Text = $"{AudioSensitivitySlider.Value:F1}x";
         }
 
         /// <summary>

@@ -31,16 +31,22 @@ namespace LightWall.Core.Audio
         /// A snapshot representing silence, used before any audio has arrived
         /// and whenever nothing is playing.
         /// </summary>
-        public static readonly AudioFeatures Silence = new(0.0, 0.0, 0.0, isSilent: true);
+        public static readonly AudioFeatures Silence = new(0.0, 0.0, 0.0, 0.0, isSilent: true);
 
         /// <summary>
         /// Creates a snapshot.
         /// </summary>
-        public AudioFeatures(double rms, double peak, double level, bool isSilent)
+        public AudioFeatures(
+            double rms,
+            double peak,
+            double level,
+            double normalisedLevel,
+            bool isSilent)
         {
             Rms = rms;
             Peak = peak;
             Level = level;
+            NormalisedLevel = normalisedLevel;
             IsSilent = isSilent;
         }
 
@@ -69,17 +75,37 @@ namespace LightWall.Core.Audio
         /// <summary>
         /// The smoothed, decibel-mapped loudness, from 0 to 1.
         ///
-        /// THIS IS THE ONE TO DRIVE VISUALS WITH.
+        /// This is absolute loudness: turn the computer's volume down and this
+        /// goes down with it. Good for a meter that should show how loud things
+        /// really are.
         ///
-        /// Raw RMS is a poor choice for lighting, for two reasons this value
+        /// Raw RMS would be a poor choice even for that, for two reasons this
         /// fixes. It jitters frame to frame, which would make anything driven by
         /// it flicker. And human hearing is logarithmic while RMS is linear, so
         /// ordinary music spends nearly all its time crammed into the bottom
-        /// tenth of the range - a meter driven by raw RMS barely moves.
+        /// tenth of the range.
         ///
         /// See AudioLevelTracker for how both are dealt with.
         /// </summary>
         public double Level { get; }
+
+        /// <summary>
+        /// Loudness measured against the recent loudest moment, from 0 to 1.
+        ///
+        /// THIS IS THE ONE TO DRIVE VISUALS WITH.
+        ///
+        /// Unlike Level, this barely cares where the volume knob is set. It
+        /// asks "how loud is this compared to the loudest thing lately?" rather
+        /// than "how loud is this compared to the loudest sound possible", so
+        /// the wall behaves the same at half volume as at full.
+        ///
+        /// It also has a response curve applied, which spreads quiet and loud
+        /// further apart so the bars use the whole height of the wall instead of
+        /// hovering around the middle.
+        ///
+        /// See AudioGainController for both.
+        /// </summary>
+        public double NormalisedLevel { get; }
 
         /// <summary>
         /// True when nothing is playing.

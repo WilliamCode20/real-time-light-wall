@@ -4,94 +4,100 @@ using LightWall.Core.Models;
 namespace LightWall.Core.Effects
 {
     /// <summary>
-    /// Each column behaves like a bar on a graphic equaliser, rising from the
-    /// bottom of the wall and falling back down in a travelling wave.
+    /// Bars rising from the bottom of the wall, driven by how loud the music is.
     ///
-    /// IMPORTANT: THIS IS NOT LISTENING TO ANYTHING YET
+    /// NO SINE WAVE ANY MORE
     ///
-    /// The bar heights come from a sine wave, not from audio. No music is being
-    /// analysed anywhere in the app at this point.
+    /// Earlier versions used a travelling sine wave, first as a stand-in for
+    /// audio and then as decoration on top of it. Both are gone.
     ///
-    /// Its real value is as a target to aim at. The shape of this effect - one
-    /// height value per column, redrawn continuously - is exactly the shape real
-    /// audio will produce later. When frequency analysis arrives, the sine wave
-    /// gets swapped for actual measured energy per frequency band and everything
-    /// around it stays as it is.
+    /// The decorative version was actively misleading: peaks and troughs rolled
+    /// across the wall that had nothing to do with the music, so it was
+    /// impossible to tell at a glance whether the wall was really following the
+    /// sound or just doing its own thing. An effect that invents movement makes
+    /// it harder to trust the movement that is real.
+    ///
+    /// WHY ALL SEVEN COLUMNS MOVE TOGETHER
+    ///
+    /// Because there is only one number describing the music: its overall
+    /// loudness. Every column is fed the same value, so every column is the same
+    /// height, and the wall rises and falls as one block.
+    ///
+    /// That is the honest picture of what we currently measure. Making the
+    /// columns differ would mean inventing the difference, which is exactly what
+    /// was just removed.
+    ///
+    /// The real fix is frequency bands - splitting the sound so that bass drives
+    /// some columns and treble others, at which point a kick drum and a hi-hat
+    /// move different parts of the wall. When that arrives, only the line
+    /// choosing each column's level has to change.
     /// </summary>
     public sealed class EqBumperEffect : IWallEffect
     {
-        /// <summary>
-        /// How many times per second the bars update at 100% speed.
-        /// Replaces the old 100-millisecond timer interval.
-        /// </summary>
-        private const double StepsPerSecond = 10.0;
-
-        /// <summary>
-        /// How far the wave advances each step. Larger values make the bars
-        /// pump faster.
-        /// </summary>
-        private const double WaveSpeed = 0.45;
-
-        /// <summary>
-        /// How much the wave is offset from one column to the next.
-        ///
-        /// This is what makes the motion read as a wave travelling sideways
-        /// across the wall. Set it to zero and all seven bars would rise and
-        /// fall in unison, which looks far more mechanical.
-        /// </summary>
-        private const double ColumnPhaseOffset = 0.75;
-
-        /// <summary>
-        /// How much random wobble to add to each bar, as a fraction of full
-        /// height. A small amount keeps the motion from looking too perfect.
-        /// </summary>
-        private const double JitterAmount = 0.25;
-
         /// <inheritdoc />
         public string DisplayName => "EQ Bumper";
 
         /// <inheritdoc />
         public string Description =>
-            "Equaliser-style bars rise and fall in a travelling wave. " +
-            "Currently driven by a sine wave rather than by real audio.";
+            "Bars driven by how loud the music is, adjusting automatically so " +
+            "the system volume setting does not matter. Start audio capture to " +
+            "make it listen.";
 
         /// <inheritdoc />
         public void Render(EffectContext context, WallFrame target)
         {
             target.Clear();
 
-            int step = context.GetStep(StepsPerSecond);
-            Random random = context.CreateRandomForStep(step);
+            int barHeight = GetBarHeight(context);
 
             for (int column = 0; column < WallFrame.Columns; column++)
             {
-                // Give each column its own place in the wave so the bars move
-                // in a sweeping ripple rather than all together.
-                double phase = (step * WaveSpeed) + (column * ColumnPhaseOffset);
-
-                // Math.Sin swings between -1 and +1. Adding 1 and halving
-                // reshapes that into a 0-to-1 range, which is easier to turn
-                // into a bar height.
-                double normalizedHeight = (Math.Sin(phase) + 1.0) / 2.0;
-
-                // Add a little wobble, centred on zero so it is equally likely
-                // to nudge a bar up or down rather than biasing it one way.
-                double jitter = (random.NextDouble() * JitterAmount) - (JitterAmount / 2.0);
-
-                // Clamp back into 0-to-1 in case the wobble pushed us outside it.
-                double finalHeight = Math.Clamp(normalizedHeight + jitter, 0.0, 1.0);
-
-                // Convert the 0-to-1 value into a whole number of lit cells.
-                // Every bar shows at least one cell, so the bottom row stays lit
-                // and the wall keeps a visible "floor" for the bars to sit on.
-                int barHeight = 1 + (int)Math.Round(finalHeight * (WallFrame.Rows - 1));
-
-                // Fill upward from the bottom row.
                 for (int rowOffset = 0; rowOffset < barHeight; rowOffset++)
                 {
                     target.SetCell(WallFrame.Rows - 1 - rowOffset, column, true);
                 }
             }
+        }
+
+        /// <summary>
+        /// Works out how tall the bars should be, from 0 to 5.
+        /// </summary>
+        private static int GetBarHeight(EffectContext context)
+        {
+            if (!context.IsAudioActive)
+            {
+                // Nobody is listening. Show a single lit row rather than
+                // nothing, so it is obvious the effect is running and waiting
+                // rather than broken - and rather than inventing motion that
+                // might be mistaken for a response to sound.
+                return 1;
+            }
+
+            // NormalisedLevel rather than Level, deliberately.
+            //
+            // Level is absolute loudness, so it falls when the computer's volume
+            // is turned down and the wall would bump less for no musical reason.
+            // NormalisedLevel is measured against the loudest moment of the last
+            // few seconds, so the volume knob cancels out and quiet music fills
+            // the wall just as well as loud music.
+            double level = context.Audio.NormalisedLevel;
+
+            // No minimum here. When the music stops, the level decays to zero
+            // and the wall goes properly dark, which is both what an equaliser
+            // does and the honest answer to "there is no sound".
+            //
+            // Rounding rather than truncating, so a bar most of the way to the
+            // next row shows that row instead of sitting stubbornly one short.
+            //
+            // AwayFromZero is specified because .NET rounds halves to the
+            // nearest EVEN number by default - so Math.Round(2.5) gives 2, not
+            // 3. That is the right choice for statistics, where always rounding
+            // halves upward introduces a slow upward bias, and the wrong one
+            // here, where it just means a bar sitting one row short at exactly
+            // the halfway point for no reason anyone could guess.
+            return (int)Math.Round(
+                Math.Clamp(level, 0.0, 1.0) * WallFrame.Rows,
+                MidpointRounding.AwayFromZero);
         }
     }
 }
