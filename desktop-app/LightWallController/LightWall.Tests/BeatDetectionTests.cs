@@ -260,6 +260,172 @@ namespace LightWall.Tests
             Assert.Equal(120.0, estimator.Bpm, precision: 0);
         }
 
+        /// <summary>
+        /// Plays a steady beat with an extra sound at a fixed point inside each
+        /// one, standing in for a synth layered over the drums in a chorus.
+        /// </summary>
+        private static TempoEstimator PlayBeatWithExtraSound(
+            double offsetIntoBeat,
+            int beats = 16,
+            double beatSeconds = 0.5)
+        {
+            var estimator = new TempoEstimator();
+
+            for (int i = 0; i < beats; i++)
+            {
+                double beat = i * beatSeconds;
+
+                estimator.AddBeat(beat);
+
+                if (offsetIntoBeat > 0.0)
+                {
+                    estimator.AddBeat(beat + offsetIntoBeat);
+                }
+            }
+
+            return estimator;
+        }
+
+        /// <summary>
+        /// THE CHORUS TEST, and the reason the estimator was rewritten.
+        ///
+        /// A busy passage adds sounds between the beats. The beat underneath has
+        /// not changed, so the reported tempo must not change either.
+        ///
+        /// Every one of these offsets except 0.25 defeated the previous version,
+        /// and not by a little. Measured then: 0.28 gave 107 BPM, 0.30 gave 100,
+        /// 0.35 gave 171, and 0.40 gave 150 BPM while reporting itself 100%
+        /// confident. The fault was that each gap was doubled until it fell in
+        /// range, which turns a slightly-off gap into a confidently wrong tempo
+        /// rather than a slightly wrong one.
+        /// </summary>
+        [Theory]
+        [InlineData(0.25)]
+        [InlineData(0.28)]
+        [InlineData(0.30)]
+        [InlineData(0.35)]
+        [InlineData(0.40)]
+        public void AnExtraSoundBetweenBeatsDoesNotMoveTheTempo(double offsetIntoBeat)
+        {
+            TempoEstimator estimator = PlayBeatWithExtraSound(offsetIntoBeat);
+
+            Assert.InRange(estimator.Bpm, 118.0, 122.0);
+        }
+
+        [Fact]
+        public void AnOffBeatLayerCostsConfidenceRatherThanCorrectness()
+        {
+            // The honest answer when half the sounds are off the beat is "120,
+            // and half of what I am hearing does not sit on it" - not a
+            // different tempo, and not full confidence either.
+            TempoEstimator clean = PlayBeatWithExtraSound(0.0);
+            TempoEstimator layered = PlayBeatWithExtraSound(0.30);
+
+            Assert.Equal(1.0, clean.Confidence, precision: 2);
+
+            Assert.InRange(layered.Bpm, 118.0, 122.0);
+
+            Assert.True(
+                layered.Confidence < clean.Confidence,
+                $"A syncopated layer reported {layered.Confidence:P0} confidence, " +
+                $"against {clean.Confidence:P0} for the same beat played clean.");
+        }
+
+        [Fact]
+        public void AMessyChorusDoesNotOverturnASettledTempo()
+        {
+            // Closer to what a real chorus does: several extra sounds per beat,
+            // none of them landing in quite the same place twice.
+            var estimator = new TempoEstimator();
+            var random = new Random(11);
+
+            double time = 0.0;
+
+            // Eight seconds of clean verse to settle on.
+            for (int i = 0; i < 16; i++)
+            {
+                estimator.AddBeat(time);
+                time += 0.5;
+            }
+
+            double settled = estimator.Bpm;
+            Assert.InRange(settled, 118.0, 122.0);
+
+            // Then the chorus arrives, with the same beat still underneath.
+            for (int i = 0; i < 24; i++)
+            {
+                estimator.AddBeat(time);
+                estimator.AddBeat(time + 0.18 + (random.NextDouble() * 0.12));
+                estimator.AddBeat(time + 0.33 + (random.NextDouble() * 0.12));
+                time += 0.5;
+            }
+
+            Assert.InRange(estimator.Bpm, 118.0, 122.0);
+        }
+
+        [Fact]
+        public void ARealTempoChangeIsPickedUpEventually()
+        {
+            // The other half of holding steady. Inertia must not be permanent -
+            // nothing here knows where one song ends and the next begins, and at
+            // a venue the next track will be at a different speed.
+            var estimator = new TempoEstimator();
+
+            double time = 0.0;
+
+            // 120 BPM.
+            for (int i = 0; i < 16; i++)
+            {
+                estimator.AddBeat(time);
+                time += 0.5;
+            }
+
+            Assert.InRange(estimator.Bpm, 118.0, 122.0);
+
+            // Then a new track at 150 BPM, which is 0.4 seconds a beat.
+            for (int i = 0; i < 40; i++)
+            {
+                estimator.AddBeat(time);
+                time += 0.4;
+            }
+
+            Assert.InRange(estimator.Bpm, 147.0, 153.0);
+        }
+
+        [Fact]
+        public void ARealTempoChangeIsRefusedWhileTheHoldIsLongEnough()
+        {
+            // Proof that holding on is wired up and doing something, rather than
+            // being decoration.
+            //
+            // This is deliberately tested by turning the hold UP rather than
+            // off. Turning it off changes nothing measurable - the scoring
+            // already refuses to be moved by a busy passage on its own, which
+            // was worth finding out and is recorded on SecondsToOverturn. So the
+            // only honest way to show the mechanism works is to demand a hold
+            // longer than the test material, and check that a change which
+            // normally would be taken is refused.
+            var estimator = new TempoEstimator { SecondsToOverturn = 60.0 };
+
+            double time = 0.0;
+
+            for (int i = 0; i < 16; i++)
+            {
+                estimator.AddBeat(time);
+                time += 0.5;
+            }
+
+            // Exactly the material that moves the estimate to 150 when the hold
+            // is at its normal three seconds.
+            for (int i = 0; i < 40; i++)
+            {
+                estimator.AddBeat(time);
+                time += 0.4;
+            }
+
+            Assert.InRange(estimator.Bpm, 118.0, 122.0);
+        }
+
         [Fact]
         public void SloppyTimingShowsUpAsLowerConfidence()
         {
