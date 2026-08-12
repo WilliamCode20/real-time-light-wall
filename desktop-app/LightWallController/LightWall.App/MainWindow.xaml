@@ -559,7 +559,7 @@
                             Grid.Column="1"
                             Minimum="1"
                             Maximum="3"
-                            Value="1.4"
+                            Value="1.7"
                             TickFrequency="0.05"
                             SmallChange="0.05"
                             LargeChange="0.1"
@@ -569,7 +569,7 @@
 
                     <TextBlock x:Name="BeatSensitivityValueTextBlock"
                                Grid.Column="2"
-                               Text="1.40x"
+                               Text="1.70x"
                                VerticalAlignment="Center"
                                FontSize="14"
                                Foreground="#DDDDDD"

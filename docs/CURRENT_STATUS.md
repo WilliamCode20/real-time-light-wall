@@ -370,7 +370,7 @@ estimate is wrong.
 ### Tuning beat detection by ear
 
 Two settings decide what counts as a beat, and both can only really be judged by
-listening: how big a jump has to be (`OnsetDetector.Sensitivity`, 1.4) and the
+listening: how big a jump has to be (`OnsetDetector.Sensitivity`, 1.7) and the
 shortest allowed gap between beats (`MinimumSecondsBetweenBeats`, 0.12).
 
 They are now sliders in the window — **Beat size** and **Beat gap** — rather than

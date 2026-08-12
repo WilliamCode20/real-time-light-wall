@@ -72,11 +72,16 @@ namespace LightWall.Core.Audio
         /// <summary>
         /// How much bigger than the recent average a jump must be to count.
         ///
-        /// Around 1.4 works well for most music. Lower finds more beats but
-        /// starts reporting ordinary texture as beats; higher only catches the
-        /// most obvious hits and misses softer ones.
+        /// Lower finds more beats but starts reporting ordinary texture as
+        /// beats; higher only catches the most obvious hits and misses softer
+        /// ones.
+        ///
+        /// 1.7 was arrived at by ear rather than by reasoning. The first value
+        /// here was 1.4, which was a defensible guess and turned out to be
+        /// consistently a little low - the slider was being pushed up on most
+        /// material, which is about as clear a signal as tuning by ear produces.
         /// </summary>
-        public double Sensitivity { get; set; } = 1.4;
+        public double Sensitivity { get; set; } = 1.7;
 
         /// <summary>
         /// The shortest gap allowed between two beats, in seconds.

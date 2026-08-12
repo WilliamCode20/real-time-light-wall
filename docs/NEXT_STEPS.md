@@ -13,15 +13,19 @@ Everything below is improvement rather than missing foundation.
 These need someone listening to real music, which is the one thing no test can
 substitute for.
 
-### 1. Onset sensitivity
+### 1. Onset sensitivity — done, but worth revisiting
 
-`MinimumSecondsBetweenBeats` has been dialled in and is now 0.20, raised from a
-starting 0.12 after listening. `OnsetDetector.Sensitivity` is still 1.4 and is
-still a reasoned default nobody has settled by ear — that is what is left here.
+Both defaults have now been dialled in by ear rather than reasoned:
 
-Both are sliders in the window — **Beat size** and **Beat gap** — with a trigger
-meter and a beat lamp beside them, so this can be done in one sitting with music
-playing rather than one rebuild at a time.
+- `MinimumSecondsBetweenBeats` is **0.20**, raised from a starting 0.12.
+- `OnsetDetector.Sensitivity` is **1.7**, raised from a starting 1.4 because the
+  slider was being pushed up on most material.
+
+Neither is settled forever — they were judged on a fairly narrow slice of music,
+and a room with different material may want different numbers. Both are sliders
+in the window, **Beat size** and **Beat gap**, with a trigger meter and a beat
+lamp beside them, so re-judging them is a one-sitting job rather than one rebuild
+at a time.
 
 How to read it:
 
