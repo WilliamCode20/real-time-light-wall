@@ -25,13 +25,13 @@ Border, Cross, Sparkle
 
 **Frame-sequence animations (3):** Row Sweep, Border Pulse, Spiral
 
-**Procedural animations (6):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
-Tempo Pulse, Starburst
+**Procedural animations (9):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
+Tempo Pulse, Starburst, Breathing, Wiggle Breathing, EQ Breathing
 
 **Diagnostics (1):** Identify Bulb, which lights one bulb at a time so the pin
 map can be checked against the relay labels.
 
-All 19 are registered in `EffectCatalog`, and the window builds its buttons from
+All 22 are registered in `EffectCatalog`, and the window builds its buttons from
 that list. Adding an effect is a one-entry change.
 
 One gap: `Diagnostics` is a separate list in the catalog, but the window still
@@ -479,6 +479,118 @@ also rippled at visibly different speeds, which made a small one look like a
 different effect rather than a smaller version of the same one. Every burst now
 ripples at the same speed and a small one simply finishes sooner, which is also
 what leaves a longer dark gap before the next beat.
+
+### Breathing — a surface that rises and falls
+
+A line lifts off the bottom row, bows up into a rounded arch and sinks back
+again, like a chest rising and falling. Beats push it up; between them it lets
+back out.
+
+It is a **surface, not a filled shape** — exactly one bulb per column, with
+nothing lit underneath. The first version filled each column from the bottom row
+upward and the difference is larger than it sounds: as a solid mass it read as a
+block growing rather than as something breathing. The eye follows the moving
+edge, and filling in behind it buries that edge in a wall of light instead of
+leaving it as the thing being watched.
+
+At full stretch and at rest:
+
+```
+..###..          .......
+.#...#.          .......
+#.....#          .......
+.......          .......
+.......          #######
+```
+
+**The arch is a circle, flattened to fit.** Height falls away from the middle the
+way it does around the top of a circle: barely at all near the centre, then
+faster towards the edges. The circle is shaped as though it were slightly wider
+than the wall, which is what lifts the outer columns — an arc drawn exactly the
+wall's width reaches zero at the last column, so the ends of the line would stay
+pinned to the floor.
+
+That replaced a straight taper, each column simply one row lower than its
+neighbour nearer the middle. It was easy to reason about and it looked like a
+pyramid: a sharp point in the middle, dead straight sides, and the outer columns
+barely lifting. Nothing about it suggested anything being inflated. The rounded
+version differs in exactly the two ways that matter — a short flat span across
+the top instead of a point, and ends that lift two rows instead of one.
+
+#### Beats push it up, and never pull it down
+
+The behaviour this effect was rewritten for, and the reason it now holds state.
+
+The first version worked the height out purely from how long ago the last beat
+was. That had a real virtue: it needed no memory at all and was a pure function of
+the moment it was asked about, which is what nearly every effect here is supposed
+to be.
+
+It looked wrong with real music, for a reason only visible while listening. Beats
+regularly arrive *before* the previous breath has finished sinking. Because the
+height came from "time since the last beat", a new beat meant a time of zero,
+which meant the floor — so the line snapped all the way down and started again,
+cutting off the tail of the movement. A run of quick beats made it slam up and
+down repeatedly instead of hovering near the top and breathing there, which is
+what a chest actually does when someone is breathing hard.
+
+The height is now something the effect carries forward and beats nudge upward,
+rather than something recalculated from scratch. Holding state is still safe
+under the repeatability rule: nothing moves unless time has actually advanced, so
+a second frame at the same moment steps by nothing, and a beat only registers when
+the beat *count* changes, so one beat cannot be counted twice.
+
+**A consequence worth knowing.** The Speed slider now does affect how briskly the
+breath rises and falls, because the movement is stepped by elapsed effect time.
+The beats still arrive from the music, so at anything other than 100% the two
+drift apart. The first version was immune to this because it read the time since
+the last beat directly. Worth knowing rather than worth fixing — the slider is a
+legitimate way to make the breath lazier or more urgent than the music, and the
+alternative was keeping a design that snapped to the floor on every beat.
+
+Gentlest effect in the catalogue for power — exactly seven bulbs at any instant,
+whatever the music does.
+
+### Three breathers sharing one envelope
+
+The rise and fall lives in `BreathEnvelope`, shared by all three breathing
+effects. They differ only in what shape they draw at a given fullness, which is a
+few lines each; the timing underneath is the part with all the care in it, so it
+exists once rather than three times.
+
+**Wiggle Breathing** is Breathing that never settles into the same shape twice.
+Instead of climbing towards a tidy arch, each breath picks its own wandering
+profile — higher on the left perhaps, dipping through the middle, rising again
+towards the right.
+
+The profile is a **random walk across the columns**: the leftmost starts somewhere
+low and each column steps up or down a little from its neighbour. A walk rather
+than an independent roll per column, and the difference matters — rolling each
+column on its own gives a row of unrelated spikes, which reads as noise rather
+than as a shape. Stepping from the previous column keeps neighbours related, so
+the line wanders as though drawn by hand.
+
+The shape is worked out from the beat number rather than drawn fresh each frame.
+Drawing fresh would re-roll it sixty times a second and the line would dissolve
+into static. Tying it to the beat also keeps the effect repeatable, the same way
+Starburst places its bursts.
+
+**EQ Breathing** is seven filled bars jumping to new heights on each beat. Two
+things differ from the other two: the bars are filled from the bottom row up
+rather than drawn as a moving edge, which is what makes it read as an equaliser;
+and each column rolls its height independently, since unrelated neighbours are
+exactly what an equaliser looks like.
+
+**It is not EQ Bumper**, which matters because the names are close. EQ Bumper is
+honest measurement — each column follows its own slice of the real spectrum, and
+silent treble leaves the right-hand columns down. EQ Breathing invents its
+heights and follows only the beat, so it is decorative rather than diagnostic and
+must never be used to judge whether the audio analysis is working.
+
+It is also the heaviest of the three for power: around twenty of the thirty-five
+bulbs on an average beat, and briefly the whole wall on the rare beat where every
+bar rolls high. That is a flash rather than a hold, well within what the original
+show did routinely.
 
 ### Choosing where the beat comes from
 

@@ -816,6 +816,686 @@ namespace LightWall.Tests
         }
 
         // ------------------------------------------------------------------
+        // Breathing
+        // ------------------------------------------------------------------
+
+        /// <summary>How often the tests step a breathing effect forward.</summary>
+        private const double BreathStepSeconds = 1.0 / 60.0;
+
+        /// <summary>
+        /// Plays a stretch of music through any beat-driven effect and keeps a
+        /// copy of every frame it drew.
+        ///
+        /// Driven as a timeline rather than sampled a frame at a time, because
+        /// the breathing effects carry their height forward rather than working
+        /// it out afresh from the current moment. Asking a fresh effect about one
+        /// instant would only ever show it at rest.
+        ///
+        /// Copies are kept because the engine hands the same frame object back
+        /// every time, so holding references would leave every entry showing the
+        /// last frame drawn.
+        /// </summary>
+        private static List<bool[,]> PlayBeatEffect(
+            IWallEffect effect,
+            double[] beatsAtSeconds,
+            double totalSeconds,
+            double tempoBpm = 120.0,
+            BeatSource source = BeatSource.Detected,
+            bool isAudioActive = true)
+        {
+            var parameters = new EffectParameters { BeatSource = source };
+            var frame = new WallFrame();
+            var drawn = new List<bool[,]>();
+
+            int beatsSoFar = 0;
+            double lastBeatAt = double.NegativeInfinity;
+
+            for (double now = 0.0; now <= totalSeconds; now += BreathStepSeconds)
+            {
+                while (beatsSoFar < beatsAtSeconds.Length && beatsAtSeconds[beatsSoFar] <= now)
+                {
+                    lastBeatAt = beatsAtSeconds[beatsSoFar];
+                    beatsSoFar++;
+                }
+
+                double sinceBeat = double.IsNegativeInfinity(lastBeatAt)
+                    ? AudioFeatures.NoBeatYet
+                    : now - lastBeatAt;
+
+                bool followingBeats = source == BeatSource.Detected;
+
+                var features = new AudioFeatures(
+                    0.5, 0.5, 0.5, 0.5, CreateBands(0.5),
+                    isSilent: false,
+                    secondsSinceBeat: followingBeats ? sinceBeat : AudioFeatures.NoBeatYet,
+                    beatCount: followingBeats ? beatsSoFar : 0,
+                    tempoBpm: tempoBpm,
+                    tempoConfidence: 1.0,
+                    secondsSincePulse: followingBeats ? AudioFeatures.NoBeatYet : sinceBeat,
+                    pulseCount: followingBeats ? 0 : beatsSoFar);
+
+                effect.Render(
+                    new EffectContext(now, parameters, 7, features, isAudioActive),
+                    frame);
+
+                var copy = new bool[WallFrame.Rows, WallFrame.Columns];
+
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    for (int column = 0; column < WallFrame.Columns; column++)
+                    {
+                        copy[row, column] = frame.GetCell(row, column);
+                    }
+                }
+
+                drawn.Add(copy);
+            }
+
+            return drawn;
+        }
+
+        /// <summary>
+        /// Plays the plain Breathing effect and reports the height of its surface
+        /// in every frame.
+        /// </summary>
+        private static List<int[]> PlayBreathing(
+            double[] beatsAtSeconds,
+            double totalSeconds,
+            double tempoBpm = 120.0,
+            BeatSource source = BeatSource.Detected,
+            bool isAudioActive = true)
+        {
+            var heights = new List<int[]>();
+
+            foreach (bool[,] drawn in PlayBeatEffect(
+                new BreathingEffect(), beatsAtSeconds, totalSeconds, tempoBpm, source, isAudioActive))
+            {
+                heights.Add(SurfaceHeights(drawn));
+            }
+
+            return heights;
+        }
+
+        /// <summary>The frame number a given moment lands on.</summary>
+        private static int FrameAt(double seconds)
+        {
+            return (int)Math.Round(seconds / BreathStepSeconds);
+        }
+
+        /// <summary>The tallest the middle of the breath got across a run.</summary>
+        private static int TallestMiddle(List<int[]> run)
+        {
+            int tallest = 0;
+
+            foreach (int[] heights in run)
+            {
+                tallest = Math.Max(tallest, heights[WallFrame.Columns / 2]);
+            }
+
+            return tallest;
+        }
+
+        /// <summary>
+        /// Reports how high the breathing surface sits in each column, from 1
+        /// (resting on the bottom row) to 5 (at the top of the wall).
+        ///
+        /// Insists on exactly one lit bulb per column as it goes, which is the
+        /// defining property of the effect: it draws a surface, not a filled
+        /// shape, so anything under the line must be dark. Checking it here
+        /// rather than in a test of its own means every test that reads heights
+        /// is also enforcing it.
+        /// </summary>
+        private static int[] SurfaceHeights(bool[,] drawn)
+        {
+            var heights = new int[WallFrame.Columns];
+
+            for (int column = 0; column < WallFrame.Columns; column++)
+            {
+                int litInColumn = 0;
+                int height = 0;
+
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    if (!drawn[row, column])
+                    {
+                        continue;
+                    }
+
+                    litInColumn++;
+
+                    // Row 0 is the top of the wall, so height counts the other
+                    // way round.
+                    height = WallFrame.Rows - row;
+                }
+
+                Assert.True(
+                    litInColumn == 1,
+                    $"Column {column} had {litInColumn} bulbs lit. The breath is a " +
+                    "surface, so every column must have exactly one.");
+
+                heights[column] = height;
+            }
+
+            return heights;
+        }
+
+        /// <summary>
+        /// Reports how tall each bar is, insisting as it goes that every bar is a
+        /// solid stack standing on the bottom row.
+        ///
+        /// A bar with a hole in it, or one floating clear of the floor, would
+        /// stop it reading as an equaliser - so the check belongs with the
+        /// measurement rather than in a test of its own.
+        /// </summary>
+        private static int[] BarHeights(bool[,] drawn)
+        {
+            var heights = new int[WallFrame.Columns];
+
+            for (int column = 0; column < WallFrame.Columns; column++)
+            {
+                int height = 0;
+
+                // Count upward from the floor until the bar stops.
+                for (int row = WallFrame.Rows - 1; row >= 0; row--)
+                {
+                    if (!drawn[row, column])
+                    {
+                        break;
+                    }
+
+                    height++;
+                }
+
+                // Anything lit above that gap is a floating bulb.
+                for (int row = WallFrame.Rows - 1 - height; row >= 0; row--)
+                {
+                    Assert.False(
+                        drawn[row, column],
+                        $"Column {column} has a bulb lit above a gap, so the bar is " +
+                        "not a solid stack standing on the floor.");
+                }
+
+                heights[column] = height;
+            }
+
+            return heights;
+        }
+
+        [Fact]
+        public void Breathing_RestsAsAFlatLineWhenThereIsNothingToBreatheTo()
+        {
+            // Two ways of having nothing to breathe to, both of which should
+            // leave the line lying flat rather than inventing movement.
+            List<int[]> nothingListening =
+                PlayBreathing(new[] { 0.1, 0.6 }, 1.5, isAudioActive: false);
+
+            List<int[]> listeningButSilent =
+                PlayBreathing(Array.Empty<double>(), 1.5);
+
+            foreach (List<int[]> run in new[] { nothingListening, listeningButSilent })
+            {
+                foreach (int[] heights in run)
+                {
+                    foreach (int height in heights)
+                    {
+                        Assert.Equal(1, height);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void Breathing_RisesAfterABeatAndSinksBackDown()
+        {
+            // The whole point of the effect: up, then down.
+            List<int[]> run = PlayBreathing(new[] { 0.1 }, 1.2);
+
+            int middle = WallFrame.Columns / 2;
+
+            Assert.Equal(1, run[0][middle]);
+            Assert.Equal(WallFrame.Rows, TallestMiddle(run));
+            Assert.Equal(1, run[^1][middle]);
+        }
+
+        [Fact]
+        public void Breathing_LiftsOffTheBottomRowAsItRises()
+        {
+            // What makes it a surface rather than a filled arch: underneath the
+            // line goes dark, so at full stretch the middle column has nothing
+            // near the floor.
+            List<int[]> run = PlayBreathing(new[] { 0.1 }, 1.2);
+
+            bool everLeftTheFloor = false;
+
+            foreach (int[] heights in run)
+            {
+                if (heights[WallFrame.Columns / 2] > 1)
+                {
+                    everLeftTheFloor = true;
+                    break;
+                }
+            }
+
+            Assert.True(everLeftTheFloor, "The line never left the bottom row.");
+        }
+
+        [Fact]
+        public void Breathing_IsAlwaysAnArchAndNeverAValley()
+        {
+            // Must hold at every instant, not just at the top of the breath.
+            // SurfaceHeights also enforces one bulb per column as it reads them.
+            List<int[]> run = PlayBreathing(new[] { 0.1, 0.6, 1.1 }, 2.0);
+
+            int middle = WallFrame.Columns / 2;
+
+            foreach (int[] heights in run)
+            {
+                for (int column = 1; column <= middle; column++)
+                {
+                    Assert.True(
+                        heights[column] >= heights[column - 1],
+                        "The line dipped on the way in to the middle.");
+                }
+
+                for (int column = middle; column < WallFrame.Columns - 1; column++)
+                {
+                    Assert.True(
+                        heights[column] >= heights[column + 1],
+                        "The line rose again on the way out from the middle.");
+                }
+            }
+        }
+
+        [Fact]
+        public void Breathing_HasARoundedTopRatherThanAPoint()
+        {
+            // The shape complaint that replaced the straight taper. Two things
+            // separate the rounded arch from the pyramid it used to draw, and
+            // both are checked at the moment the breath is fullest.
+            List<int[]> run = PlayBreathing(new[] { 0.1 }, 1.2);
+
+            int[] fullest = run[0];
+
+            foreach (int[] heights in run)
+            {
+                if (heights[WallFrame.Columns / 2] > fullest[WallFrame.Columns / 2])
+                {
+                    fullest = heights;
+                }
+            }
+
+            int middle = WallFrame.Columns / 2;
+
+            // A short flat span across the top rather than a single high point.
+            Assert.True(
+                fullest[middle - 1] == fullest[middle] &&
+                fullest[middle + 1] == fullest[middle],
+                $"The top came to a point: heights were {string.Join(",", fullest)}.");
+
+            // And the ends of the line lift clear of the floor rather than
+            // staying pinned to it, which is what the straight taper did.
+            Assert.True(
+                fullest[0] >= 3,
+                $"The outer columns barely lifted: heights were {string.Join(",", fullest)}.");
+        }
+
+        [Fact]
+        public void Breathing_IsNeverPushedDownwardByABeat()
+        {
+            // THE BEHAVIOUR THIS EFFECT WAS REWRITTEN FOR.
+            //
+            // Beats regularly arrive before the previous breath has finished
+            // sinking. The first version worked the height out from the time
+            // since the last beat, so a new beat meant a time of zero, which
+            // meant the floor - the line snapped all the way down and started
+            // again, cutting off the tail of the movement.
+            //
+            // Nothing should ever drop the line by more than a row in one frame.
+            // A snap to the floor from full stretch would be a fall of four.
+            List<int[]> run = PlayBreathing(new[] { 0.1, 0.28, 0.44, 0.62 }, 1.6);
+
+            int middle = WallFrame.Columns / 2;
+
+            for (int frame = 1; frame < run.Count; frame++)
+            {
+                int fell = run[frame - 1][middle] - run[frame][middle];
+
+                Assert.True(
+                    fell <= 1,
+                    $"The line dropped {fell} rows in a single frame at frame {frame}, " +
+                    "which means a beat snapped it downward instead of pushing it up.");
+            }
+        }
+
+        [Fact]
+        public void Breathing_StaysUpWhileBeatsKeepArriving()
+        {
+            // The other half of the same idea. Under a run of quick beats the
+            // line should hover near the top and breathe there, rather than
+            // slamming back to the floor between each one.
+            var quickBeats = new[] { 0.10, 0.26, 0.42, 0.58, 0.74, 0.90 };
+
+            List<int[]> run = PlayBreathing(quickBeats, 1.0);
+
+            int middle = WallFrame.Columns / 2;
+
+            // Once it has first got off the floor, it should stay off it for the
+            // rest of the run.
+            int firstOffTheFloor = run.FindIndex(heights => heights[middle] > 1);
+
+            Assert.True(firstOffTheFloor >= 0, "The line never left the floor at all.");
+
+            for (int frame = firstOffTheFloor; frame < run.Count; frame++)
+            {
+                Assert.True(
+                    run[frame][middle] > 1,
+                    $"The line fell back to the floor at frame {frame} even though " +
+                    "beats were still arriving.");
+            }
+        }
+
+        [Fact]
+        public void Breathing_FollowsTheChosenBeatSource()
+        {
+            // The same beats delivered as detected beats and as metronome
+            // pulses. Whichever the setting does not name should be ignored.
+            var beats = new[] { 0.1, 0.6 };
+
+            int followingBeats = TallestMiddle(
+                PlayBreathing(beats, 1.2, source: BeatSource.Detected));
+
+            int followingTempo = TallestMiddle(
+                PlayBreathing(beats, 1.2, source: BeatSource.Tempo));
+
+            Assert.Equal(WallFrame.Rows, followingBeats);
+            Assert.Equal(WallFrame.Rows, followingTempo);
+
+            // And with nothing arriving on the chosen counter, the line stays
+            // flat however busy the other one is.
+            List<int[]> wrongCounter = PlayBreathing(
+                Array.Empty<double>(), 1.2, source: BeatSource.Tempo);
+
+            Assert.Equal(1, TallestMiddle(wrongCounter));
+        }
+
+        [Fact]
+        public void Breathing_KeepsPaceWithTheTempo()
+        {
+            // The breath is paced to fill the gap between beats, so at half the
+            // tempo it should still be on its way up where the faster one has
+            // already got there.
+            int slow = PlayBreathing(new[] { 0.0 }, 0.2, tempoBpm: 60.0)[^1][WallFrame.Columns / 2];
+            int fast = PlayBreathing(new[] { 0.0 }, 0.2, tempoBpm: 120.0)[^1][WallFrame.Columns / 2];
+
+            Assert.True(
+                slow < fast,
+                $"At 60 BPM the line was at height {slow} and at 120 it was at {fast} - " +
+                "the breath is not being paced by the tempo.");
+        }
+
+        // ------------------------------------------------------------------
+        // Wiggle Breathing
+        // ------------------------------------------------------------------
+
+        /// <summary>Beats half a second apart, which is 120 BPM.</summary>
+        private static readonly double[] SteadyBeats = { 0.0, 0.5, 1.0, 1.5, 2.0, 2.5 };
+
+        [Fact]
+        public void WiggleBreathing_IsStillASurfaceAndStillRestsFlat()
+        {
+            // Everything it shares with Breathing. SurfaceHeights enforces the
+            // one-bulb-per-column rule as it reads each frame.
+            List<bool[,]> run = PlayBeatEffect(
+                new WiggleBreathingEffect(), SteadyBeats, 3.0);
+
+            foreach (bool[,] drawn in run)
+            {
+                SurfaceHeights(drawn);
+            }
+
+            List<bool[,]> resting = PlayBeatEffect(
+                new WiggleBreathingEffect(), Array.Empty<double>(), 1.0);
+
+            foreach (bool[,] drawn in resting)
+            {
+                foreach (int height in SurfaceHeights(drawn))
+                {
+                    Assert.Equal(1, height);
+                }
+            }
+        }
+
+        [Fact]
+        public void WiggleBreathing_SettlesSomewhereDifferentEveryBreath()
+        {
+            // The whole reason it exists. Sampled a fifth of a second after each
+            // beat, which is around the top of a breath at this tempo.
+            List<bool[,]> run = PlayBeatEffect(
+                new WiggleBreathingEffect(), SteadyBeats, 3.0);
+
+            var shapesSeen = new HashSet<string>();
+
+            foreach (double beatAt in SteadyBeats)
+            {
+                int frame = FrameAt(beatAt + 0.2);
+
+                if (frame >= run.Count)
+                {
+                    continue;
+                }
+
+                shapesSeen.Add(string.Join(",", SurfaceHeights(run[frame])));
+            }
+
+            Assert.True(
+                shapesSeen.Count >= 3,
+                $"Only {shapesSeen.Count} different shapes across six breaths, so it " +
+                "is not really wandering.");
+        }
+
+        [Fact]
+        public void WiggleBreathing_IsNotAlwaysASymmetricalArch()
+        {
+            // What separates it from plain Breathing, whose arch is symmetrical
+            // by construction and so can never fail this.
+            List<bool[,]> run = PlayBeatEffect(
+                new WiggleBreathingEffect(), SteadyBeats, 3.0);
+
+            bool everLopsided = false;
+
+            foreach (bool[,] drawn in run)
+            {
+                int[] heights = SurfaceHeights(drawn);
+
+                if (heights[0] != heights[WallFrame.Columns - 1])
+                {
+                    everLopsided = true;
+                    break;
+                }
+            }
+
+            Assert.True(
+                everLopsided,
+                "The line was symmetrical in every frame, which means it is drawing " +
+                "an arch rather than wandering.");
+        }
+
+        [Fact]
+        public void WiggleBreathing_RisesOnABeatAndSinksBack()
+        {
+            // Same envelope as Breathing, so the same rise and fall.
+            List<bool[,]> run = PlayBeatEffect(
+                new WiggleBreathingEffect(), new[] { 0.1 }, 1.5);
+
+            int tallestSeen = 0;
+
+            foreach (bool[,] drawn in run)
+            {
+                foreach (int height in SurfaceHeights(drawn))
+                {
+                    tallestSeen = Math.Max(tallestSeen, height);
+                }
+            }
+
+            Assert.True(tallestSeen > 1, "The line never left the floor.");
+
+            foreach (int height in SurfaceHeights(run[^1]))
+            {
+                Assert.Equal(1, height);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // EQ Breathing
+        // ------------------------------------------------------------------
+
+        [Fact]
+        public void EqBreathing_DrawsSolidBarsStandingOnTheBottomRow()
+        {
+            // BarHeights does the checking - every bar a solid stack from the
+            // floor, with nothing floating above a gap.
+            List<bool[,]> run = PlayBeatEffect(
+                new EqBreathingEffect(), SteadyBeats, 3.0);
+
+            foreach (bool[,] drawn in run)
+            {
+                foreach (int height in BarHeights(drawn))
+                {
+                    Assert.True(height >= 1, "A bar vanished entirely, leaving a gap in the floor.");
+                }
+            }
+        }
+
+        [Fact]
+        public void EqBreathing_GivesTheBarsDifferentHeightsFromEachOther()
+        {
+            // What makes it look like an equaliser rather than a block rising:
+            // neighbouring bars are unrelated, so they should regularly disagree.
+            List<bool[,]> run = PlayBeatEffect(
+                new EqBreathingEffect(), SteadyBeats, 3.0);
+
+            bool everUneven = false;
+
+            foreach (bool[,] drawn in run)
+            {
+                int[] heights = BarHeights(drawn);
+
+                for (int column = 1; column < WallFrame.Columns; column++)
+                {
+                    if (heights[column] != heights[column - 1])
+                    {
+                        everUneven = true;
+                        break;
+                    }
+                }
+
+                if (everUneven)
+                {
+                    break;
+                }
+            }
+
+            Assert.True(everUneven, "Every bar was always the same height as its neighbour.");
+        }
+
+        [Fact]
+        public void EqBreathing_RollsFreshHeightsOnEachBeat()
+        {
+            List<bool[,]> run = PlayBeatEffect(
+                new EqBreathingEffect(), SteadyBeats, 3.0);
+
+            var shapesSeen = new HashSet<string>();
+
+            foreach (double beatAt in SteadyBeats)
+            {
+                int frame = FrameAt(beatAt + 0.2);
+
+                if (frame >= run.Count)
+                {
+                    continue;
+                }
+
+                shapesSeen.Add(string.Join(",", BarHeights(run[frame])));
+            }
+
+            Assert.True(
+                shapesSeen.Count >= 3,
+                $"Only {shapesSeen.Count} different sets of heights across six beats.");
+        }
+
+        [Fact]
+        public void EqBreathing_SinksBackToTheBottomRowBetweenBeats()
+        {
+            List<bool[,]> run = PlayBeatEffect(
+                new EqBreathingEffect(), new[] { 0.1 }, 1.5);
+
+            foreach (int height in BarHeights(run[^1]))
+            {
+                Assert.Equal(1, height);
+            }
+        }
+
+        [Fact]
+        public void EqBreathing_HoldsItsHeightsSteadyBetweenBeats()
+        {
+            // Rolling new heights every frame instead of every beat would blur
+            // the bars into noise. They should climb and fall smoothly, so no bar
+            // may jump by more than a row from one frame to the next except where
+            // a beat has just landed.
+            List<bool[,]> run = PlayBeatEffect(
+                new EqBreathingEffect(), new[] { 0.1 }, 1.2);
+
+            for (int frame = FrameAt(0.25); frame < run.Count; frame++)
+            {
+                int[] before = BarHeights(run[frame - 1]);
+                int[] after = BarHeights(run[frame]);
+
+                for (int column = 0; column < WallFrame.Columns; column++)
+                {
+                    Assert.True(
+                        Math.Abs(after[column] - before[column]) <= 1,
+                        $"Bar {column} jumped {Math.Abs(after[column] - before[column])} rows " +
+                        $"in one frame at frame {frame}, with no beat to explain it.");
+                }
+            }
+        }
+
+        [Fact]
+        public void BothNewBreathersFollowTheChosenBeatSource()
+        {
+            // They read the beat through the shared envelope, so this is really a
+            // check that neither reached past it to the audio snapshot.
+            foreach (IWallEffect effect in new IWallEffect[]
+            {
+                new WiggleBreathingEffect(),
+                new EqBreathingEffect()
+            })
+            {
+                // Beats arriving on the detected counter while the setting says
+                // to follow the metronome: nothing should move.
+                List<bool[,]> ignoring = PlayBeatEffect(
+                    effect, Array.Empty<double>(), 1.5, source: BeatSource.Tempo);
+
+                int litAtRest = WallFrame.Columns;
+
+                foreach (bool[,] drawn in ignoring)
+                {
+                    int lit = 0;
+
+                    foreach (bool cell in drawn)
+                    {
+                        if (cell)
+                        {
+                            lit++;
+                        }
+                    }
+
+                    Assert.Equal(litAtRest, lit);
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
         // Choosing where the beat comes from
         // ------------------------------------------------------------------
 

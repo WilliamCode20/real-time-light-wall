@@ -60,7 +60,31 @@ trade-off is relay wear.
 beat, the low end sets their size and whichever end is leading sets which way the
 star points.
 
-Two things to copy from it rather than reinvent:
+**Breathing** is the second, and shows a different shape of the same idea: a
+surface rather than a filled shape, and a height it carries forward that beats
+push upward rather than restart. Between them the two cover most of what a
+beat-driven effect has to decide.
+
+One lesson from it worth carrying forward: **a beat should rarely reset an
+animation to its start.** Beats arrive before the previous movement has finished
+far more often than they do not, so anything that restarts on a beat spends most
+of its life cut off part way through. Pushing a value up and letting it fall
+looks right in both the sparse and the busy case.
+
+**Wiggle Breathing** and **EQ Breathing** are the same envelope with different
+shapes on top, and are the cheapest kind of new effect to add: `BreathEnvelope`
+already handles the beat, the timing and the speed slider, so each is only a
+question of what to draw at a given fullness. Two ideas they demonstrate that
+transfer:
+
+- Anything randomised per beat should be worked out from the **beat number**, not
+  rolled fresh each frame. Rolling per frame re-randomises sixty times a second
+  and turns a shape into static.
+- Neighbouring columns should be **related** for anything meant to read as a line
+  and **independent** for anything meant to read as bars. That single choice is
+  most of the difference between Wiggle Breathing and EQ Breathing.
+
+Two things to copy from Starburst rather than reinvent:
 
 - Read `EffectContext.BeatCount`, not `Audio.BeatCount` or `Audio.PulseCount`.
   That is what makes an effect follow the user's **Bursts on** choice between
