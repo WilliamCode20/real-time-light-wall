@@ -161,7 +161,7 @@ SystemAudioCapture (IO, WASAPI loopback)
                 --> AudioGainController  volume independence, noise gate
                 --> SpectrumAnalyser     FFT into 7 bands, one per column
                 --> OnsetDetector        spectral flux, moving threshold
-                --> TempoEstimator       median of gaps, confidence
+                --> TempoEstimator       scores every candidate tempo
                 --> BeatClock            metronome locked to that tempo
         --> AudioFeatures (immutable snapshot)
                 --> WallShowClock --> WallEngine --> EffectContext --> effects
@@ -184,6 +184,16 @@ Non-obvious decisions worth not undoing:
 - **Tempo is held through quiet passages** (30 s) while *confidence* fades. An
   earlier version wiped it after 3 s, which erased the estimate during exactly
   the breakdowns where holding the beat matters most.
+- **Tempo is found by scoring whole candidate tempos**, not by folding individual
+  gaps into range and taking a median. Folding a slightly-off gap produces a
+  confidently *wrong* tempo rather than a slightly wrong one — an earlier version
+  reported 150 BPM at 100% confidence on a 120 BPM track with a syncopated layer.
+  Every pair of recent onsets is compared, not just neighbours, because once
+  every beat has a companion sound the true spacing stops appearing as a gap at
+  all.
+- **Confidence means "what share of recent sounds land on the beat"**, not
+  "what fraction of gaps agree". The old meaning stopped applying once pairs
+  several beats apart were being considered.
 
 ## Serial protocol
 

@@ -248,28 +248,93 @@ and sparse material alike.
 
 Three separate guards, each ruling out a different false alarm: a minimum flux
 (so near-silence does not trigger), a rising-edge requirement (so the readings
-after a peak are not each counted), and a minimum gap of 0.12 s (so one drum hit
+after a peak are not each counted), and a minimum gap of 0.20 s (so one drum hit
 is not reported three times).
+
+The gap was 0.12 to begin with, which is about what covering the width of one
+hit needs. Raised after listening: the extra is doing a second job, ignoring some
+of the sounds that are real but not on the beat. 0.20 still allows up to 300
+beats a minute, comfortably faster than the fastest tempo ever reported, so no
+real beat is suppressed by it.
 
 Detection works from the **raw** band strengths, not the smoothed ones. Smoothing
 rounds off exactly the sharp rise an onset consists of.
 
 ### Tempo
 
-`TempoEstimator` takes the **median** of recent gaps between beats, not the
-average — one missed beat produces a doubled gap that would drag an average
-upward, and the median simply ignores it.
+`TempoEstimator` tries **every tempo** in the reportable range and asks of each
+one: how much of what was just heard would make sense at this speed? The test is
+that the distance between any two sounds should be a whole number of beats. Every
+pair of recent sounds votes for the tempos it fits, and the tempo with the most
+votes wins.
+
+A vote counts for less the more beats apart the pair is, because two sounds one
+beat apart are far stronger evidence than two sounds five beats apart — at five
+beats, almost any tempo can find some multiple that nearly fits. That weighting
+is also what settles the choice between a tempo and double it: both explain the
+same sounds, but the slower one explains them at lower multiples.
 
 Tempo is genuinely ambiguous: the same music at 70 and at 140 are both correct
-descriptions, and listeners disagree about this constantly. Gaps are folded by
-doubling or halving into 70–180 BPM, so a slow track may be reported at double
-its written tempo. For driving lights that barely matters.
+descriptions, and listeners disagree about this constantly. Only tempos inside
+70–180 BPM are ever tried, so a slow track may be reported at double its written
+tempo. For driving lights that barely matters.
 
-**Confidence** is reported alongside, as the fraction of recent gaps agreeing
-with the estimate. Worth having because a confident wrong answer and an
-unconfident one look identical without it. Observed in practice: a phone ringtone
-gives a number with 33% confidence, correctly signalling that it has onsets but
-no real beat.
+**Confidence** is the share of recent sounds that actually land on the beat. A
+clean four-to-the-floor track gives something near 1; a chorus with a syncopated
+synth over the same beat gives perhaps 0.5, which is honest — half the sounds
+genuinely are not on the beat, and the tempo underneath is still right. Worth
+having because a confident wrong answer and an unconfident one look identical
+without it.
+
+Once settled, the estimate also **resists being moved**. A rival tempo has to win
+by a clear margin and keep winning for three seconds before it takes over — long
+enough that a passing wobble cannot do it, short enough that the next track is
+picked up quickly. It is deliberately not permanent: nothing here knows where one
+song ends and the next begins.
+
+#### The version before this, and how it failed
+
+Worth recording, because it was convincing and wrong.
+
+The first version measured the gap between each sound and the one before it,
+doubled or halved each gap until it landed in range, and took the middle value.
+It worked well on clean material and fell over on a busy chorus.
+
+**Fault one: doubling a slightly-wrong gap gives a confidently wrong answer, not
+a slightly wrong one.** A gap of 0.30 s is too short to be a beat, so it was
+doubled to 0.60 and reported as 100 BPM. A gap of 0.20 became 0.40 and reported
+150. Sounds landing a little off the grid — which is most of what a busy
+arrangement adds — did not blur the answer, they scattered it.
+
+Measured on a simulated 120 BPM track with one extra sound per beat: landing
+exactly on the eighth note gave 120 BPM at 100% confidence, but moving that same
+sound 50 ms later gave 100 BPM at 52%, and moving it to 0.40 s after the beat
+gave **150 BPM at 100% confidence** — completely wrong and maximally sure.
+
+**Fault two, the deeper one: only neighbouring sounds were ever compared.** Once
+every beat had a companion sound between it and the next, the real half-second
+spacing never appeared as a gap at all. The correct answer was not being
+outvoted; it was not on the ballot.
+
+**A wrong turn on the way to the fix.** The obvious repair was to keep the median
+but widen it to include pairs further apart. That did fix the tempo — 120 BPM in
+every case — but dropped confidence to around 50% even when exactly right,
+because many of those wider gaps are legitimately two or three beats long. It
+would have fixed the number and broken the thing that tells you whether to trust
+the number. Confidence had to be rethought too, not carried over.
+
+**And one thing that turned out not to matter.** The resist-being-moved rule was
+added expecting it to be what kept a chorus from dragging the estimate around. It
+is not. Running the messy-chorus test with the hold set to zero still gives
+120.5 BPM against a true 120 — the scoring does that work on its own. The hold is
+a second line of defence for cases the scoring cannot settle, and is proven to
+function by turning it *up* rather than off: at sixty seconds a real change from
+120 to 150 is correctly refused. That is what the test checks, since testing it
+the obvious way would prove nothing.
+
+Verified end to end through the running app on a 120 BPM track with a synth
+0.30 s into every beat — the exact case that used to report 100 BPM. It now reads
+119 BPM at 53% confidence.
 
 **Beat Flash** flashes the whole wall on each detected beat. Deliberately the
 crudest possible visual — anything more elaborate would obscure whether a flash

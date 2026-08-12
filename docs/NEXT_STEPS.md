@@ -15,12 +15,13 @@ substitute for.
 
 ### 1. Onset sensitivity
 
-`OnsetDetector.Sensitivity` is 1.4 and `MinimumSecondsBetweenBeats` is 0.12.
-Both are reasoned defaults that nobody has dialled in by ear.
+`MinimumSecondsBetweenBeats` has been dialled in and is now 0.20, raised from a
+starting 0.12 after listening. `OnsetDetector.Sensitivity` is still 1.4 and is
+still a reasoned default nobody has settled by ear — that is what is left here.
 
-Both are now sliders in the window — **Beat size** and **Beat gap** — with a
-trigger meter and a beat lamp beside them, so this can be done in one sitting
-with music playing rather than one rebuild at a time.
+Both are sliders in the window — **Beat size** and **Beat gap** — with a trigger
+meter and a beat lamp beside them, so this can be done in one sitting with music
+playing rather than one rebuild at a time.
 
 How to read it:
 
