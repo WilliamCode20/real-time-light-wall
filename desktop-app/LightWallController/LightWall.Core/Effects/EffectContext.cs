@@ -126,6 +126,40 @@ namespace LightWall.Core.Effects
         public bool IsAudioActive { get; }
 
         /// <summary>
+        /// How many beats have happened, counting whichever kind of beat the
+        /// user has asked for.
+        ///
+        /// THIS IS THE ONE FOR EFFECTS THAT DO SOMETHING ONCE PER BEAT.
+        ///
+        /// A count rather than a time, and that matters. A time would have to be
+        /// caught inside some window after the beat, and the engine reads audio
+        /// on its own schedule - so a short window could be stepped clean over
+        /// and a long one could be seen twice and counted as two beats. A count
+        /// that has changed means exactly one thing, however often it is read.
+        ///
+        /// Reading this rather than Audio.BeatCount is what lets the choice
+        /// between real beats and the metronome be made once, in the interface,
+        /// instead of in every effect. See BeatSource.
+        /// </summary>
+        public int BeatCount =>
+            Parameters.BeatSource == BeatSource.Tempo
+                ? Audio.PulseCount
+                : Audio.BeatCount;
+
+        /// <summary>
+        /// How long ago the last beat was, counting whichever kind of beat the
+        /// user has asked for.
+        ///
+        /// For effects that stay lit for a moment after each beat rather than
+        /// doing something once on it. Where BeatCount is right for "start
+        /// something new", this is right for "be bright just after".
+        /// </summary>
+        public double SecondsSinceBeat =>
+            Parameters.BeatSource == BeatSource.Tempo
+                ? Audio.SecondsSincePulse
+                : Audio.SecondsSinceBeat;
+
+        /// <summary>
         /// Converts the current time into a whole step number at whatever pace
         /// the calling effect wants.
         ///

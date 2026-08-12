@@ -56,6 +56,23 @@ trade-off is relay wear.
 
 ### 4. More beat-driven effects
 
+**Starburst** is the first of these and the pattern to copy: bursts fire on the
+beat, the low end sets their size and whichever end is leading sets which way the
+star points.
+
+Two things to copy from it rather than reinvent:
+
+- Read `EffectContext.BeatCount`, not `Audio.BeatCount` or `Audio.PulseCount`.
+  That is what makes an effect follow the user's **Bursts on** choice between
+  detected beats and the tempo metronome, and it costs nothing to get right.
+- Use a count rather than a time for anything that happens once per beat. A time
+  has to be caught inside a window, and the engine reads audio on its own
+  schedule — a short window can be stepped clean over and a long one can be seen
+  twice.
+
+Still unused: `AudioFeatures.BeatPhase`, for effects that sweep or fade *across* a
+beat rather than firing on it.
+
 `AudioFeatures.BeatPhase` (0→1 across each beat) is exposed and unused. Effects
 that sweep, fade or travel *across* a beat rather than blinking on it — a meteor
 crossing the wall exactly once per bar, a pattern that changes on the downbeat.

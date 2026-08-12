@@ -271,6 +271,57 @@
                 </Grid>
 
                 <!--
+                    Where beat-driven effects take their beat from.
+
+                    Not a setting for any one effect, which is why it sits here
+                    with the other cross-cutting controls rather than beside the
+                    beat detection sliders. Every effect that does something on
+                    the beat faces the same choice and they all follow this, so
+                    two effects on screen can never disagree about when the beat
+                    was.
+
+                    Beat Flash and Tempo Pulse deliberately ignore it. Their job
+                    is to show the difference between the two, so letting either
+                    be switched would remove the only honest way to judge whether
+                    detection is working.
+                -->
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="Bursts on"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,0"/>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <RadioButton x:Name="BeatSourceDetectedRadio"
+                                     Content="Detected beats"
+                                     GroupName="BeatSource"
+                                     IsChecked="True"
+                                     Foreground="White"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,18,0"
+                                     ToolTip="Fires on beats actually heard. Goes quiet when the drums do."
+                                     Checked="BeatSourceRadio_Checked"/>
+
+                        <RadioButton x:Name="BeatSourceTempoRadio"
+                                     Content="Tempo"
+                                     GroupName="BeatSource"
+                                     Foreground="White"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     ToolTip="Fires on a metronome at the detected tempo. Keeps time through quiet passages, but needs a tempo before it does anything."
+                                     Checked="BeatSourceRadio_Checked"/>
+                    </StackPanel>
+                </Grid>
+
+                <!--
                     Audio capture.
 
                     Listens to what this computer is PLAYING, not to a

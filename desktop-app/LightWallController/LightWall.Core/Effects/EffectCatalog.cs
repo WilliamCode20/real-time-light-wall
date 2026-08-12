@@ -225,7 +225,8 @@ namespace LightWall.Core.Effects
                 new SparkleStormEffect(),
                 new EqBumperEffect(),
                 new BeatFlashEffect(),
-                new TempoPulseEffect()
+                new TempoPulseEffect(),
+                new StarburstEffect()
             };
         }
     }

@@ -776,7 +776,42 @@ namespace LightWall.App
                 engine.OffsetColumns = (int)CenterXSlider.Value;
 
                 engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value;
+                engine.Parameters.BeatSource = SelectedBeatSource();
             });
+        }
+
+        /// <summary>
+        /// Reads which beat source the radio buttons are set to.
+        /// </summary>
+        private BeatSource SelectedBeatSource()
+        {
+            // IsChecked is a bool? rather than a bool, because a checkbox can
+            // also be in an indeterminate state. These never are, so anything
+            // other than a definite true means the other option.
+            return BeatSourceTempoRadio.IsChecked == true
+                ? BeatSource.Tempo
+                : BeatSource.Detected;
+        }
+
+        /// <summary>
+        /// Runs when either beat source radio button is picked.
+        ///
+        /// Takes effect on the next frame, so switching mid-track is immediate.
+        /// The burst already on the wall finishes its life either way - it was
+        /// started by a beat that genuinely happened, whichever kind it was.
+        /// </summary>
+        private void BeatSourceRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            // WPF raises Checked while the window is still being built. The
+            // first radio button is marked IsChecked in the XAML, so this fires
+            // before the second one has been created - and SelectedBeatSource
+            // reads that second one.
+            if (BeatSourceTempoRadio is null)
+            {
+                return;
+            }
+
+            _clock.Modify(engine => engine.Parameters.BeatSource = SelectedBeatSource());
         }
 
         /// <summary>

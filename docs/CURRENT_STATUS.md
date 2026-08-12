@@ -25,13 +25,13 @@ Border, Cross, Sparkle
 
 **Frame-sequence animations (3):** Row Sweep, Border Pulse, Spiral
 
-**Procedural animations (5):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
-Tempo Pulse
+**Procedural animations (6):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
+Tempo Pulse, Starburst
 
 **Diagnostics (1):** Identify Bulb, which lights one bulb at a time so the pin
 map can be checked against the relay labels.
 
-All 18 are registered in `EffectCatalog`, and the window builds its buttons from
+All 19 are registered in `EffectCatalog`, and the window builds its buttons from
 that list. Adding an effect is a one-entry change.
 
 One gap: `Diagnostics` is a separate list in the catalog, but the window still
@@ -406,6 +406,108 @@ Readings are now capped at the top of the scale before being remembered.
 Verified against a synthetic 120 BPM track: the bar spikes past the line on each
 hit and drains back to near zero before the next, the lamp fires on exactly those
 frames, and the tempo readout settles at 118 BPM with 100% confidence.
+
+### Starburst — the first effect driven by both beat and frequency
+
+A dark wall with one small explosion going off on each detected beat, in a
+different place every time.
+
+One burst: a single bulb lights, the four around it join it to make a plus, the
+middle drops out, then the plus goes too. Bigger ones do the same thing with more
+rings, so the ring travels outward like a ripple.
+
+**Two separate readings from the music**, kept apart so each can be seen working
+on its own:
+
+- The **low end sets the size**. A heavy kick throws a ripple most of the way
+  across the wall; a light one makes a small plus.
+- **Whichever end is leading sets which way the star points.** Bass-led beats
+  throw a star pointing north, south, east and west, whose smallest form is the
+  four-bulb plus. Beats led by the top end — a hi-hat, a bright stab — throw the
+  same star turned to point at the corners, whose smallest form is a four-bulb X.
+  Small bursts of the two kinds therefore cannot be mistaken for one another.
+
+**How a star is made out of rings.** Every bulb sits on one of eight arms — four
+straight, four diagonal — and anything in the gaps between arms is never lit,
+which is what makes the sides fall inward instead of running straight from point
+to point. One set of arms then leads and the other trails by a single step, so by
+the time the leading points have reached three steps out the trailing ones are
+only at two.
+
+**One rule that is load-bearing rather than taste:** a trailing arm never uses its
+innermost bulb. The travelling ring is wide enough to touch two rings at once —
+that overlap is what makes a burst read as a ripple — but the innermost trailing
+bulb is a diagonal neighbour of the middle while the leading ones are its straight
+neighbours. Light both while the middle has gone dark and the result is all eight
+bulbs around a dark one: a hollow 3×3 square, which is not a star by any reading.
+
+**Two shapes that were tried and dropped.** A solid diamond expanded correctly and
+looked dull, because the edge between any two points is a perfectly straight
+diagonal line — it reads as a growing lozenge. Putting all eight arms at the same
+distance was worse: one step out, eight equidistant arms *are* the eight bulbs
+surrounding the middle, so small bursts and the last frame of large ones both
+ended on that hollow 3×3. That was not a drawing bug so much as the shape being
+geometrically impossible at that size, which is why the fix was to change the
+shape rather than special-case the radius. It then reappeared once more from the
+ring overlap described above, which is how that invariant came to be written down.
+
+Both readings use band levels measured against their own recent history, which is
+what makes "the bass is bumping" mean something even in a quiet passage.
+
+**Bursts can be centred anywhere including the very edge**, and one in a corner
+simply shows the quarter of itself that fits. That is worth a note because
+`WallFrame.SetCell` throws on a coordinate off the wall rather than ignoring it —
+so the effect walks the 35 real bulbs and asks each whether it belongs to the
+current ring, rather than generating ring coordinates and trying to set them.
+Thirty-five sums a frame is nothing, and it makes an out-of-bounds coordinate
+impossible rather than merely unlikely.
+
+**It holds state, which nearly every other effect must not.** A burst is an event
+rather than a position: where it appeared and when it started were decided when a
+beat arrived, possibly several redraws ago, and cannot be recovered from the
+current time. The rule is still honoured where it matters — a new burst only
+starts when the beat *count* changes, and where it lands comes from the beat
+number rather than a shared generator, so asking about the same moment twice
+gives the same picture both times.
+
+**A mistake caught by printing the frames out.** The first version stretched every
+burst to fill the whole gap between beats, on the reasoning that the wall should
+stay busy. A one-ring burst then had to cover two steps rather than four, so it
+crawled — the plus appeared and sat there unchanged for three quarters of the
+beat, reading as a blinking plus rather than anything bursting. Big and small hits
+also rippled at visibly different speeds, which made a small one look like a
+different effect rather than a smaller version of the same one. Every burst now
+ripples at the same speed and a small one simply finishes sooner, which is also
+what leaves a longer dark gap before the next beat.
+
+### Choosing where the beat comes from
+
+The project has two answers to "when is the next beat", and they are genuinely
+different things rather than two implementations of one thing. **Bursts on** in
+Animation Controls picks between them:
+
+- **Detected beats** — beats actually heard. Honest: when the drums stop, so does
+  the wall. Inherits every miss and every false alarm.
+- **Tempo** — a metronome at the detected tempo. Keeps perfect time and carries
+  straight through a passage with nothing to detect, but is a prediction, and does
+  nothing at all until a tempo has been worked out.
+
+`EffectParameters.BeatSource` holds the choice and effects read it through
+`EffectContext.BeatCount`, so no effect implements the choice itself and adding a
+beat-driven effect gets both modes for free. It sits with the cross-cutting
+controls rather than beside the beat detection sliders because it is not any one
+effect's business — and because two effects on screen should never disagree about
+when the beat was.
+
+**Beat Flash and Tempo Pulse deliberately ignore it.** Their job is to show the
+difference between the two, so letting either be switched would remove the only
+honest reference for judging whether detection is working. There is a test
+holding that in place.
+
+Verified end to end the decisive way: with **Tempo** selected, a tempo locked, and
+then the music stopped outright, bursts carry on firing. Under **Detected beats**
+the wall would go dark. Nothing else distinguishes the two while music is playing,
+since both fire at roughly the same moments.
 
 ### Latency budget
 

@@ -257,12 +257,21 @@ by discarding packets during a settle window rather than blocking `Connect`.
 
 Do not add these speculatively:
 
-- **Beat prediction for effects other than Tempo Pulse.** Beat Flash fires on
-  detection on purpose — a predicted flash looks convincing whether or not
-  detection works, hiding the faults it exists to reveal.
-- **Per-effect parameter systems.** `EffectParameters` is one shared object while
-  there are only two effect-specific settings. Revisit when several effects have
-  their own controls.
+- **Beat prediction in Beat Flash or Tempo Pulse.** Those two exist to show the
+  difference between what was heard and what was predicted, so each is pinned to
+  its own source and neither follows the `BeatSource` setting. A predicted flash
+  looks convincing whether or not detection works, which would hide the faults
+  Beat Flash exists to reveal.
+
+  Other beat-driven effects *do* choose, via `EffectParameters.BeatSource`, read
+  through `EffectContext.BeatCount`. Effects should never reach for
+  `Audio.BeatCount` or `Audio.PulseCount` directly — that hard-codes an answer
+  the user is supposed to give, and lets two effects on screen disagree about
+  when the beat was.
+- **Per-effect parameter systems.** `EffectParameters` is one shared object.
+  `MeteorTailLength` and `IdentifyBulbIndex` belong to a single effect each;
+  `BeatSource` is deliberately cross-cutting and would stay shared even after a
+  split. Revisit when several effects have their own controls.
 - **Brightness or dimming.** The relays are zero-cross SSRs and strictly ON/OFF.
   If it ever became desirable, `SetCell(row, column, bool)` can stay as an
   overload so existing effects keep working.
