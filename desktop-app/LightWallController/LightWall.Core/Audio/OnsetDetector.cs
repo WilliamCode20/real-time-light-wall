@@ -88,10 +88,31 @@ namespace LightWall.Core.Audio
         /// three or four beats in quick succession, which would ruin any attempt
         /// to work out the tempo.
         ///
-        /// 0.12 seconds allows up to 500 beats a minute, far faster than any
-        /// music, while comfortably covering the width of a single hit.
+        /// WHY 0.20 AND NOT SOMETHING SMALLER
+        ///
+        /// Covering the width of one hit only needs about 0.10. The original
+        /// value was 0.12 on that reasoning, and it was too tight in practice.
+        ///
+        /// The extra is doing a second job: ignoring some of the sounds that are
+        /// real but unhelpful. A drum hit is not the only thing that starts at a
+        /// given moment - hi-hats, synth stabs and guitar chords all produce
+        /// onsets, and most of them are not on the beat.
+        ///
+        /// 0.20 still allows up to 300 beats a minute, which is comfortably
+        /// faster than the fastest tempo reported (180, or one beat every 0.33
+        /// seconds), so no real beat is ever suppressed by it.
+        ///
+        /// A note on going further. Turning this up to 0.30 was tried by ear and
+        /// did sound better, before the tempo estimator was rewritten - at 120
+        /// beats a minute it suppresses the eighth notes, which used to send the
+        /// tempo estimate wandering. That is no longer necessary: the estimator
+        /// now copes with off-beat sounds directly rather than needing them
+        /// hidden from it. 0.30 is also uncomfortably close to a real beat at
+        /// the top of the tempo range, where beats are only 0.33 apart.
+        ///
+        /// The slider still reaches 0.30 if a particular room wants it.
         /// </summary>
-        public double MinimumSecondsBetweenBeats { get; set; } = 0.12;
+        public double MinimumSecondsBetweenBeats { get; set; } = 0.20;
 
         /// <summary>
         /// How much of the flux must come from a genuine signal before anything
