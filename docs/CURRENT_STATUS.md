@@ -25,13 +25,14 @@ Border, Cross, Sparkle
 
 **Frame-sequence animations (3):** Row Sweep, Border Pulse, Spiral
 
-**Procedural animations (9):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
-Tempo Pulse, Starburst, Breathing, Wiggle Breathing, EQ Breathing
+**Procedural animations (10):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
+Tempo Pulse, Starburst, Breathing, Wiggle Breathing, EQ Breathing, Checkerboard
+Switch
 
 **Diagnostics (1):** Identify Bulb, which lights one bulb at a time so the pin
 map can be checked against the relay labels.
 
-All 22 are registered in `EffectCatalog`, and the window builds its buttons from
+All 23 are registered in `EffectCatalog`, and the window builds its buttons from
 that list. Adding an effect is a one-entry change.
 
 One gap: `Diagnostics` is a separate list in the catalog, but the window still
@@ -591,6 +592,39 @@ It is also the heaviest of the three for power: around twenty of the thirty-five
 bulbs on an average beat, and briefly the whole wall on the rare beat where every
 bar rolls high. That is a flash rather than a hold, well within what the original
 show did routinely.
+
+### Checkerboard Switch — the whole wall changing at once
+
+There are exactly two ways to chequer a wall: every bulb is lit in one of them or
+lit in the other, never both and never neither. This shows one, and every beat
+swaps to the other.
+
+The wall is therefore **never dark**. Roughly half the bulbs are lit at all times,
+and a beat does not turn anything off so much as hand the lighting over to the
+other half. That is what gives it its snap — every single bulb changes at once, so
+the beat is impossible to miss from across a room.
+
+**It needs no memory**, and is the opposite extreme from the breathing effects. It
+never has to remember which board it is showing because the beat number already
+says: even beats get one, odd beats get the other. Counting beats is something the
+audio side does anyway, so the switching falls out of arithmetic rather than out of
+anything held here. Add a bulb's row and column together — even belongs to one
+board, odd to the other, which is exactly a chessboard since stepping one place in
+any direction flips even to odd. Adding the beat number flips the whole wall.
+
+That makes it a pure function of the moment it is asked about: nothing to reset,
+nothing that can get out of step, and drawing the same moment twice gives the same
+picture without any care being taken.
+
+It is the one audio effect that **does not** drop to a single lit row while
+waiting. Being never dark is the point of it, so with nothing listening it holds a
+board still instead. Holding still is signal enough that nothing is being heard.
+
+**Power is different in kind here** and worth stating plainly. This holds around
+eighteen of the thirty-five bulbs lit *continuously* rather than touching a high
+number for an instant — roughly a hundred milliamps against the two hundred
+available. Comfortable, but a sustained load rather than a flash, which is the
+distinction the caution in this project is really about.
 
 ### Choosing where the beat comes from
 

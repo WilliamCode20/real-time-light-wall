@@ -1496,6 +1496,177 @@ namespace LightWall.Tests
         }
 
         // ------------------------------------------------------------------
+        // Checkerboard Switch
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Counts the lit bulbs in a captured frame.
+        /// </summary>
+        private static int LitCells(bool[,] drawn)
+        {
+            int lit = 0;
+
+            foreach (bool cell in drawn)
+            {
+                if (cell)
+                {
+                    lit++;
+                }
+            }
+
+            return lit;
+        }
+
+        [Fact]
+        public void CheckerboardSwitch_NeverLeavesTheWallDark()
+        {
+            // The defining promise of the effect: it is always showing one board
+            // or the other, so there is no instant at which the wall is off.
+            //
+            // A 5x7 wall splits 18 and 17 between the two boards.
+            List<bool[,]> run = PlayBeatEffect(
+                new CheckerboardSwitchEffect(), SteadyBeats, 3.0);
+
+            foreach (bool[,] drawn in run)
+            {
+                int lit = LitCells(drawn);
+
+                Assert.True(
+                    lit == 17 || lit == 18,
+                    $"The wall had {lit} bulbs lit, which is neither of the two boards.");
+            }
+        }
+
+        [Fact]
+        public void CheckerboardSwitch_ShowsAChequeredPatternWithNoTwoNeighboursAlike()
+        {
+            // What makes it a chequerboard rather than any other half-lit
+            // pattern: every bulb differs from the ones beside and above it.
+            List<bool[,]> run = PlayBeatEffect(
+                new CheckerboardSwitchEffect(), SteadyBeats, 3.0);
+
+            foreach (bool[,] drawn in run)
+            {
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    for (int column = 0; column < WallFrame.Columns; column++)
+                    {
+                        if (column + 1 < WallFrame.Columns)
+                        {
+                            Assert.NotEqual(drawn[row, column], drawn[row, column + 1]);
+                        }
+
+                        if (row + 1 < WallFrame.Rows)
+                        {
+                            Assert.NotEqual(drawn[row, column], drawn[row + 1, column]);
+                        }
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void CheckerboardSwitch_SwapsToTheExactOppositeOnEachBeat()
+        {
+            // Not merely "changes on a beat" - every single bulb has to change,
+            // which is a much stronger claim and is what gives the effect its
+            // snap.
+            List<bool[,]> run = PlayBeatEffect(
+                new CheckerboardSwitchEffect(), SteadyBeats, 3.0);
+
+            foreach (double beatAt in SteadyBeats)
+            {
+                int afterBeat = FrameAt(beatAt) + 1;
+
+                // The first beat lands on the very first frame, which has nothing
+                // before it to compare against.
+                if (afterBeat <= 1 || afterBeat >= run.Count)
+                {
+                    continue;
+                }
+
+                bool[,] before = run[afterBeat - 2];
+                bool[,] after = run[afterBeat];
+
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    for (int column = 0; column < WallFrame.Columns; column++)
+                    {
+                        Assert.NotEqual(before[row, column], after[row, column]);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void CheckerboardSwitch_HoldsStillBetweenBeats()
+        {
+            // It should snap on the beat and then sit perfectly still, rather
+            // than drifting or flickering in between.
+            List<bool[,]> run = PlayBeatEffect(
+                new CheckerboardSwitchEffect(), new[] { 0.0, 1.0 }, 0.9);
+
+            for (int frame = 1; frame < run.Count; frame++)
+            {
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    for (int column = 0; column < WallFrame.Columns; column++)
+                    {
+                        Assert.Equal(run[frame - 1][row, column], run[frame][row, column]);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void CheckerboardSwitch_StillShowsABoardWhenNobodyIsListening()
+        {
+            // Deliberately different from the other audio effects, which drop to
+            // a single lit row while waiting. This one is defined by never being
+            // dark, so it holds a board still instead.
+            List<bool[,]> run = PlayBeatEffect(
+                new CheckerboardSwitchEffect(), SteadyBeats, 1.0, isAudioActive: false);
+
+            foreach (bool[,] drawn in run)
+            {
+                Assert.Equal(18, LitCells(drawn));
+            }
+        }
+
+        [Fact]
+        public void CheckerboardSwitch_FollowsTheChosenBeatSource()
+        {
+            // Beats arriving on the detected counter while the setting says to
+            // follow the metronome. The board must not swap.
+            List<bool[,]> ignoring = PlayBeatEffect(
+                new CheckerboardSwitchEffect(),
+                Array.Empty<double>(),
+                1.5,
+                source: BeatSource.Tempo);
+
+            foreach (bool[,] drawn in ignoring)
+            {
+                Assert.Equal(18, LitCells(drawn));
+            }
+
+            // And with the metronome actually striking, it does swap.
+            List<bool[,]> following = PlayBeatEffect(
+                new CheckerboardSwitchEffect(),
+                SteadyBeats,
+                3.0,
+                source: BeatSource.Tempo);
+
+            var boardsSeen = new HashSet<int>();
+
+            foreach (bool[,] drawn in following)
+            {
+                boardsSeen.Add(LitCells(drawn));
+            }
+
+            Assert.Equal(2, boardsSeen.Count);
+        }
+
+        // ------------------------------------------------------------------
         // Choosing where the beat comes from
         // ------------------------------------------------------------------
 

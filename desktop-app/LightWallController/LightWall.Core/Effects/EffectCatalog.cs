@@ -229,7 +229,8 @@ namespace LightWall.Core.Effects
                 new StarburstEffect(),
                 new BreathingEffect(),
                 new WiggleBreathingEffect(),
-                new EqBreathingEffect()
+                new EqBreathingEffect(),
+                new CheckerboardSwitchEffect()
             };
         }
     }
