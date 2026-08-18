@@ -36,6 +36,13 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Tempo Pulse";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        // No beat source control either, for the mirror image of the reason Beat
+        // Flash has none: this one is pinned to the metronome, so that between
+        // them the pair show the difference between heard and predicted.
+
+        /// <inheritdoc />
         public string Description =>
             "Pulses steadily at the estimated tempo, carrying straight through " +
             "quiet passages where nothing is being played. Beat Flash reacts to " +

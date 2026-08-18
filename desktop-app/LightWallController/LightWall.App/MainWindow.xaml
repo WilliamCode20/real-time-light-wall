@@ -46,24 +46,61 @@
 
     <Grid Margin="24">
         <Grid.ColumnDefinitions>
-            <!-- Left: all the controls, in a scrollable panel. -->
-            <ColumnDefinition Width="540"/>
-            <!-- Right: the wall itself, taking whatever space is left. -->
-            <ColumnDefinition Width="*"/>
+            <!--
+                Left: the controls. Takes whatever the right column does not.
+            -->
+            <ColumnDefinition Width="*" MinWidth="520"/>
+            <!--
+                Right: the two walls and the readouts.
+
+                CAPPED RATHER THAN GIVEN A SHARE OF THE WINDOW
+
+                This used to be "whatever is left over" against a fixed 540 for
+                the controls, which meant that on a wide screen it grew without
+                limit - two thirds of the window, most of it empty space either
+                side of walls that had already stopped growing.
+
+                The walls sit in a Viewbox that keeps their 7:5 shape. Two of
+                them stacked, plus their labels and the readouts underneath,
+                means the HEIGHT of the window runs out long before the width
+                does - so past a certain point every extra pixel of width is
+                empty space either side of a wall that has stopped growing.
+
+                600 was measured rather than guessed. On a maximised window here
+                the walls settle at about 505 wide, so this leaves them a little
+                room to breathe without the gulf that 700 left beside them. The
+                cap only ever binds on a wide screen; on a narrow one the column
+                simply takes its half and the walls shrink to suit.
+            -->
+            <ColumnDefinition Width="*" MaxWidth="600"/>
         </Grid.ColumnDefinitions>
 
         <!--
-            The controls sit inside a ScrollViewer so that shrinking the window
-            makes them scroll rather than getting cut off and becoming
-            unreachable.
-        -->
-        <ScrollViewer Grid.Column="0"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Margin="0,0,24,0">
-            <StackPanel>
+            THE CONTROL COLUMN
 
-                <!-- Header area -->
+            Three rows: the title, the tabs, and a strip of animation controls
+            that sits below the tabs rather than inside them.
+
+            WHY THE ANIMATION CONTROLS ARE NOT IN A TAB
+
+            Speed and the centre offsets apply to whatever is playing, so they
+            are wanted on both animation tabs. Putting a copy in each would mean
+            two sets of sliders showing the same setting, which drift apart the
+            moment one is dragged. One strip below the tabs is a single source
+            of truth, and reads as "pick an effect above, adjust it below".
+
+            It hides itself on the Connections tab, where there is nothing for it
+            to adjust. See ControlTabs_SelectionChanged.
+        -->
+        <Grid Grid.Column="0" Margin="0,0,24,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header area -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,12">
                 <TextBlock Text="Light Wall Simulator"
                            FontSize="26"
                            FontWeight="Bold"
@@ -73,37 +110,20 @@
                            FontSize="13"
                            Foreground="#CCCCCC"
                            TextWrapping="Wrap"
-                           Margin="0,6,0,16"/>
+                           Margin="0,6,0,0"/>
+            </StackPanel>
 
-                <!-- Static patterns section -->
-                <TextBlock Text="Static Patterns"
-                           FontSize="15"
-                           FontWeight="Bold"
-                           Foreground="White"
-                           Margin="0,0,0,8"/>
+            <!--
+                THE SHARED ANIMATION CONTROLS
 
-                <!-- Filled in by BuildEffectButtons() in the code-behind. -->
-                <WrapPanel x:Name="StaticPatternsPanel" Margin="0,0,0,6"/>
-
-                <!-- Pre-set animations section -->
-                <TextBlock Text="Pre-Set Animations"
-                           FontSize="15"
-                           FontWeight="Bold"
-                           Foreground="White"
-                           Margin="0,8,0,8"/>
-
-                <!-- Filled in by BuildEffectButtons() in the code-behind. -->
-                <WrapPanel x:Name="SequenceAnimationsPanel" Margin="0,0,0,6"/>
-
-                <!-- Procedural animations section -->
-                <TextBlock Text="Procedural Animations"
-                           FontSize="15"
-                           FontWeight="Bold"
-                           Foreground="White"
-                           Margin="0,8,0,8"/>
-
-                <!-- Filled in by BuildEffectButtons() in the code-behind. -->
-                <WrapPanel x:Name="ProceduralAnimationsPanel" Margin="0,0,0,6"/>
+                Declared here but placed in row 2, below the tabs. A Grid puts a
+                child wherever its Grid.Row says regardless of the order things
+                are written in, which lets this sit next to the code it belongs
+                with while appearing under the tab strip on screen.
+            -->
+            <StackPanel x:Name="AnimationControlsStrip"
+                        Grid.Row="2"
+                        Margin="0,14,0,0">
 
                 <!--
                     Stop is written out by hand rather than generated, because it
@@ -125,9 +145,13 @@
                            Foreground="White"
                            Margin="0,0,0,10"/>
 
+                <!--
+                    The three that apply to whatever is playing. These are handled
+                    by the engine rather than by any effect, so they are always
+                    shown - unlike the rows below them.
+                -->
                 <Grid Margin="0,0,0,14">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -237,9 +261,24 @@
                                Foreground="#DDDDDD"
                                Margin="12,0,0,10"/>
 
-                    <!-- Meteor Tail Length -->
-                    <TextBlock Grid.Row="3"
-                               Grid.Column="0"
+                </Grid>
+
+                <!--
+                    Meteor Tail Length.
+
+                    Lifted out of the grid above and given a name of its own so
+                    it can be shown and hidden as a unit. It belongs to a single
+                    effect, so it only appears while that effect is playing - see
+                    UpdateContextualControls.
+                -->
+                <Grid x:Name="MeteorTailRow" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
                                Text="Meteor Tail"
                                VerticalAlignment="Center"
                                FontSize="14"
@@ -247,7 +286,6 @@
                                Margin="0,0,12,0"/>
 
                     <Slider x:Name="MeteorTailLengthSlider"
-                            Grid.Row="3"
                             Grid.Column="1"
                             Minimum="1"
                             Maximum="5"
@@ -261,7 +299,6 @@
                             ValueChanged="MeteorTailLengthSlider_ValueChanged"/>
 
                     <TextBlock x:Name="MeteorTailLengthValueTextBlock"
-                               Grid.Row="3"
                                Grid.Column="2"
                                Text="3"
                                VerticalAlignment="Center"
@@ -285,7 +322,7 @@
                     be switched would remove the only honest way to judge whether
                     detection is working.
                 -->
-                <Grid Margin="0,0,0,14">
+                <Grid x:Name="BeatSourceRow" Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="110"/>
                         <ColumnDefinition Width="*"/>
@@ -330,7 +367,7 @@
                     is punchier: one beat runs the entire fill in a quick run of
                     pictures, the next runs the entire clear.
                 -->
-                <Grid Margin="0,0,0,14">
+                <Grid x:Name="FillPacingRow" Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="110"/>
                         <ColumnDefinition Width="*"/>
@@ -365,6 +402,78 @@
                                      Checked="FillPacingRadio_Checked"/>
                     </StackPanel>
                 </Grid>
+            </StackPanel>
+
+            <TabControl x:Name="ControlTabs"
+                        Grid.Row="1"
+                        Background="Transparent"
+                        BorderBrush="#444444"
+                        BorderThickness="1"
+                        SelectionChanged="ControlTabs_SelectionChanged">
+
+                <!-- ==========================================================
+                     TAB 1 - everything that does not listen to the music.
+                     ========================================================== -->
+                <TabItem Header="Patterns &amp; Animations">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="12">
+
+                            <!-- Static patterns section -->
+                            <TextBlock Text="Static Patterns"
+                                       FontSize="15"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       Margin="0,0,0,8"/>
+
+                            <!-- Filled in by BuildEffectButtons() in the code-behind. -->
+                            <WrapPanel x:Name="StaticPatternsPanel" Margin="0,0,0,6"/>
+
+                            <!-- Pre-set animations section -->
+                            <TextBlock Text="Pre-Set Animations"
+                                       FontSize="15"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       Margin="0,8,0,8"/>
+
+                            <!-- Filled in by BuildEffectButtons() in the code-behind. -->
+                            <WrapPanel x:Name="SequenceAnimationsPanel" Margin="0,0,0,6"/>
+
+                            <!--
+                                Procedural animations that work out their picture
+                                from the clock alone. The ones that listen to the
+                                music live on the next tab; which is which comes
+                                from the effect itself, not from a list kept here.
+                                See IWallEffect.ReactsToAudio.
+                            -->
+                            <TextBlock Text="Procedural Animations"
+                                       FontSize="15"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       Margin="0,8,0,8"/>
+
+                            <!-- Filled in by BuildEffectButtons() in the code-behind. -->
+                            <WrapPanel x:Name="ProceduralAnimationsPanel" Margin="0,0,0,6"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- ==========================================================
+                     TAB 2 - the effects that listen, and the ear itself.
+                     ========================================================== -->
+                <TabItem Header="Audio Reactivity">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="12">
+
+                <TextBlock Text="Audio-Reactive Animations"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           Margin="0,0,0,8"/>
+
+                <!-- Filled in by BuildEffectButtons() in the code-behind. -->
+                <WrapPanel x:Name="AudioEffectsPanel" Margin="0,0,0,14"/>
 
                 <!--
                     Audio capture.
@@ -746,6 +855,17 @@
                                Foreground="#999999"
                                TextWrapping="Wrap"/>
                 </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- ==========================================================
+                     TAB 3 - the cable, the board, and proving it all works.
+                     ========================================================== -->
+                <TabItem Header="Connections &amp; Testing">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="12">
 
                 <!--
                     Serial connection.
@@ -1054,8 +1174,11 @@
                          BorderBrush="#444444"
                          FontFamily="Consolas"
                          FontSize="12"/>
-            </StackPanel>
-        </ScrollViewer>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
 
         <!-- Visual simulator area -->
         <Grid Grid.Column="1">

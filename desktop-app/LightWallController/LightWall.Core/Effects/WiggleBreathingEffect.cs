@@ -86,6 +86,12 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Wiggle Breathing";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        /// <inheritdoc />
+        public EffectControl Controls => EffectControl.BeatSource;
+
+        /// <inheritdoc />
         public string Description =>
             "Breathing with a mind of its own: the line rises on each beat but " +
             "settles into a different wandering shape every time. Start audio " +

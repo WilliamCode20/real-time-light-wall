@@ -53,6 +53,15 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Beat Flash";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        // No beat source control on purpose, and the absence is the point. This
+        // effect is pinned to beats actually heard, because a predicted flash
+        // looks convincing whether or not detection worked - which is the fault
+        // it exists to reveal. Offering a switch that would be ignored is worse
+        // than offering none.
+
+        /// <inheritdoc />
         public string Description =>
             "Flashes the whole wall on every detected beat. The quickest way to " +
             "see whether beat detection is working - it either lands with the " +

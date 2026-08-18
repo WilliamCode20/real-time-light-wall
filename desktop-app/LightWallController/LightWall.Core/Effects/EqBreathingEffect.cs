@@ -59,6 +59,12 @@ namespace LightWall.Core.Effects
         public string DisplayName => "EQ Breathing";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        /// <inheritdoc />
+        public EffectControl Controls => EffectControl.BeatSource;
+
+        /// <inheritdoc />
         public string Description =>
             "Seven bars jump to new heights on every beat and sink back between " +
             "them. The heights are invented rather than measured - use EQ Bumper " +

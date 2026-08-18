@@ -49,6 +49,12 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Breathing";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        /// <inheritdoc />
+        public EffectControl Controls => EffectControl.BeatSource;
+
+        /// <inheritdoc />
         public string Description =>
             "A line lifts off the bottom row into a rounded arch and sinks back, " +
             "like a chest rising and falling. Beats push it up rather than " +

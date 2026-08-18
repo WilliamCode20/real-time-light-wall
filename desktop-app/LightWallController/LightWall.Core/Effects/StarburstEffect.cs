@@ -204,6 +204,12 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Starburst";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        /// <inheritdoc />
+        public EffectControl Controls => EffectControl.BeatSource;
+
+        /// <inheritdoc />
         public string Description =>
             "Little explosions pop up around a dark wall, one on each beat. " +
             "Heavy bass throws a wide ripple; a bright hi-hat throws a small " +

@@ -97,6 +97,15 @@ namespace LightWall.App
         /// <summary>Normal background for an effect button that is not playing.</summary>
         private static readonly Brush InactiveEffectBrush = CreateFrozenBrush(221, 221, 221);
 
+        /// <summary>
+        /// Which tab holds the cable, the board and the fault sliders.
+        ///
+        /// The one tab with nothing for the animation controls to adjust, so the
+        /// strip below the tabs hides itself here. Counted from zero in the order
+        /// the tabs are written in the layout file.
+        /// </summary>
+        private const int ConnectionsTabIndex = 2;
+
         /// <summary>The beat lamp while a beat is being reported.</summary>
         private static readonly Brush BeatLampLitBrush = CreateFrozenBrush(255, 199, 0);
 
@@ -473,7 +482,37 @@ namespace LightWall.App
             AddEffectButtons(StaticPatternsPanel, _catalog.StaticPatterns, width: 96, height: 32);
 
             AddEffectButtons(SequenceAnimationsPanel, _catalog.SequenceAnimations, width: 150, height: 36);
-            AddEffectButtons(ProceduralAnimationsPanel, _catalog.ProceduralAnimations, width: 150, height: 36);
+
+            // WHICH TAB A PROCEDURAL ANIMATION BELONGS ON
+            //
+            // Split by asking each effect whether it reads the music, rather
+            // than by keeping a list of names here. A list would have to be
+            // edited every time an effect was added, and would be wrong the
+            // first time somebody forgot - which is exactly the arrangement the
+            // catalogue exists to avoid. See IWallEffect.ReactsToAudio.
+            var soundless = new List<IWallEffect>();
+            var listening = new List<IWallEffect>();
+
+            foreach (IWallEffect effect in _catalog.ProceduralAnimations)
+            {
+                if (effect.ReactsToAudio)
+                {
+                    listening.Add(effect);
+                }
+                else
+                {
+                    soundless.Add(effect);
+                }
+            }
+
+            AddEffectButtons(ProceduralAnimationsPanel, soundless, width: 150, height: 36);
+            AddEffectButtons(AudioEffectsPanel, listening, width: 150, height: 36);
+
+            // The diagnostics deliberately get no generated button. Identify
+            // Bulb is reached through the Hardware Check panel on the
+            // Connections and Testing tab, which gives it purpose-built controls
+            // - a readout naming the bulb four ways, and Previous and Next -
+            // that a plain button in a row of show effects could not.
         }
 
         /// <summary>
@@ -1495,6 +1534,85 @@ namespace LightWall.App
                 pair.Value.Background = isActive ? ActiveEffectBrush : InactiveEffectBrush;
                 pair.Value.FontWeight = isActive ? FontWeights.Bold : FontWeights.Normal;
             }
+
+            UpdateContextualControls(active);
+        }
+
+        /// <summary>
+        /// Shows only the effect-specific controls the running effect actually
+        /// reads, and hides the rest.
+        ///
+        /// WHY BOTHER
+        ///
+        /// A slider on screen is a promise that dragging it does something. The
+        /// meteor tail length means nothing while Breathing is playing, and the
+        /// fill pacing means nothing unless one of the Fill and Clear effects is
+        /// - so leaving them visible invites the reasonable conclusion that they
+        /// ought to work.
+        ///
+        /// Hooked into UpdateStatusText because that already runs at every point
+        /// the playing effect can change: a button press, Stop, and start-up.
+        /// One place to keep in step rather than three.
+        ///
+        /// Which controls an effect wants comes from the effect itself, never
+        /// from a list of names kept here. See EffectControl.
+        /// </summary>
+        private void UpdateContextualControls(IWallEffect? active)
+        {
+            // Runs once during start-up before the layout has been built, since
+            // UpdateStatusText is called from the constructor.
+            if (MeteorTailRow is null)
+            {
+                return;
+            }
+
+            // Nothing playing means nothing to adjust.
+            EffectControl wanted = active?.Controls ?? EffectControl.None;
+
+            MeteorTailRow.Visibility = ShowIf(wanted, EffectControl.MeteorTail);
+            BeatSourceRow.Visibility = ShowIf(wanted, EffectControl.BeatSource);
+            FillPacingRow.Visibility = ShowIf(wanted, EffectControl.FillPacing);
+        }
+
+        /// <summary>
+        /// Works out whether one control should be on screen.
+        ///
+        /// Collapsed rather than Hidden. Hidden keeps a control's space
+        /// reserved, so hiding a row would leave a blank gap exactly the size of
+        /// the row that went away; Collapsed lets everything below it close up.
+        /// </summary>
+        private static Visibility ShowIf(EffectControl wanted, EffectControl control)
+        {
+            return wanted.HasFlag(control) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Hides the shared animation controls on the tab that has nothing for
+        /// them to adjust.
+        /// </summary>
+        private void ControlTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // A TabControl is not the only thing that raises SelectionChanged.
+            // The event travels up from any selector inside the tabs as well, so
+            // the serial port dropdown on the Connections tab lands here too -
+            // and would be read as a tab change, hiding or showing the strip at
+            // random. Checking where the event actually started rules that out.
+            if (!ReferenceEquals(e.OriginalSource, ControlTabs))
+            {
+                return;
+            }
+
+            // Raised once while the window is still being built, before the
+            // strip exists.
+            if (AnimationControlsStrip is null)
+            {
+                return;
+            }
+
+            bool showsAnimations = ControlTabs.SelectedIndex != ConnectionsTabIndex;
+
+            AnimationControlsStrip.Visibility =
+                showsAnimations ? Visibility.Visible : Visibility.Collapsed;
         }
 
         /// <summary>

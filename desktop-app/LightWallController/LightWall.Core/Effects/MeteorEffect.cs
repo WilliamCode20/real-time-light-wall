@@ -29,6 +29,10 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Meteor";
 
         /// <inheritdoc />
+        /// <remarks>The tail length slider belongs to this effect alone.</remarks>
+        public EffectControl Controls => EffectControl.MeteorTail;
+
+        /// <inheritdoc />
         public string Description =>
             "A lit head with a trailing tail sweeps across each row in turn. " +
             "Tail length is adjustable.";

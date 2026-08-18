@@ -41,6 +41,10 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Identify Bulb";
 
         /// <inheritdoc />
+        /// <remarks>Driven entirely by which bulb number is chosen for it.</remarks>
+        public EffectControl Controls => EffectControl.IdentifyBulb;
+
+        /// <inheritdoc />
         public string Description =>
             "Lights one bulb at a time so the wiring can be checked against the " +
             "relay labels. Use the Previous and Next buttons to step through.";

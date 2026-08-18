@@ -73,5 +73,56 @@ namespace LightWall.Core.Effects
         /// Nearly every effect should start with target.Clear().
         /// </summary>
         void Render(EffectContext context, WallFrame target);
+
+        // ------------------------------------------------------------------
+        // WHAT FOLLOWS, AND WHY IT LOOKS DIFFERENT FROM THE THREE ABOVE
+        //
+        // These two have a body: "=> false" and "=> EffectControl.None". An
+        // interface with actual code in it looks wrong at first glance, since
+        // the note at the top of this file says an interface contains no code
+        // of its own.
+        //
+        // That was true of C# for a long time and stopped being true a few
+        // versions ago. A member written this way is a DEFAULT: an effect that
+        // says nothing gets this answer, and one that wants a different answer
+        // writes its own.
+        //
+        // It is used here because the honest answer for most effects is "no"
+        // and "none". Twenty-odd effects would otherwise each need a line
+        // saying so, which is a lot of noise for no information - and the day
+        // somebody adds an effect and forgets, the compiler would stop them for
+        // a reason that does not matter.
+        //
+        // The trade worth knowing: a default is only visible through the
+        // interface. Code holding a MeteorEffect directly cannot see
+        // ReactsToAudio unless MeteorEffect declares it. Everything here works
+        // through IWallEffect, so that never bites, but it is why this should
+        // not become a habit for members that matter to the classes themselves.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Whether this effect does anything with the music.
+        ///
+        /// Used to decide which tab of the window an effect belongs in. An
+        /// effect that reads nothing from EffectContext.Audio should leave this
+        /// alone, and one that reads anything at all should say so.
+        ///
+        /// It is about whether audio is READ, not about whether it looks good
+        /// with music playing. Meteor is perfectly nice over a track and still
+        /// answers no, because nothing about what it draws depends on the sound.
+        /// </summary>
+        bool ReactsToAudio => false;
+
+        /// <summary>
+        /// Which of the effect-specific front-panel controls this one reads.
+        ///
+        /// The window shows only the controls the running effect has asked for,
+        /// so a slider on screen always does something. See EffectControl.
+        ///
+        /// Only settings belonging to particular effects go here. Speed and the
+        /// centre offsets are applied by the engine to whatever is playing, so
+        /// they are always shown and are nobody's to declare.
+        /// </summary>
+        EffectControl Controls => EffectControl.None;
     }
 }

@@ -124,6 +124,18 @@ namespace LightWall.Core.Effects
             _axis == FillAxis.Rows ? "Fill Horizontal" : "Fill Vertical";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// Two of them, which is what the Flags attribute on EffectControl is
+        /// there for: the beat source it shares with the other beat-driven
+        /// effects, and the pacing that belongs to this one alone.
+        /// </remarks>
+        public EffectControl Controls =>
+            EffectControl.BeatSource | EffectControl.FillPacing;
+
+        /// <inheritdoc />
         public string Description =>
             _axis == FillAxis.Rows
                 ? "Horizontal bars fill the wall outward from the middle row, then " +

@@ -59,9 +59,9 @@ well as animations, which was previously inconsistent.
 
 ### Simulator UI
 
-Two-column layout: controls on the left in a scrollable panel, the wall on the
-right at a fixed 7:5 aspect. The previous single-column layout pushed the wall
-off the bottom of the screen once the controls grew.
+Two columns: controls on the left, the two walls and the readouts on the right at
+a fixed 7:5 aspect. The original single-column layout pushed the wall off the
+bottom of the screen once the controls grew.
 
 - effect buttons generated from the catalog, with descriptions as tooltips
 - the active effect's button is highlighted
@@ -69,6 +69,61 @@ off the bottom of the screen once the controls grew.
 - live frame-rate readout
 - redraws via `CompositionTarget.Rendering` at ~60 fps
 - only changed cells are restyled; brushes are created once and frozen
+
+#### Three tabs, not one long stack
+
+The controls were a single scrolling column, categorised but unbroken, which made
+finding anything a matter of scrolling past everything else. They are now:
+
+| Tab | Holds |
+|---|---|
+| **Patterns & Animations** | Static patterns, pre-set animations, and the procedural ones that ignore the music |
+| **Audio Reactivity** | Every effect that listens, plus the whole audio capture panel |
+| **Connections & Testing** | Arduino connection, hardware check, virtual wall faults, packet preview |
+
+**Which tab an effect lands on comes from the effect**, via
+`IWallEffect.ReactsToAudio`, not from a list kept in the window. A list would need
+editing every time an effect was added and would be wrong the first time somebody
+forgot — the same reasoning that put the buttons in the catalogue to begin with.
+
+`Diagnostics` deliberately gets no generated button. Identify Bulb is reached
+through the Hardware Check panel, which gives it a readout naming the bulb four
+ways plus Previous and Next — controls a plain button in a row of show effects
+could not. That also closes the old gap where a bring-up tool sat among the show
+effects.
+
+#### Controls that appear only when they apply
+
+Speed and the centre offsets are applied by the engine to whatever is playing, so
+they are always on screen. The rest are not: the meteor tail means nothing unless
+Meteor is running, and the fill pacing means nothing unless a Fill and Clear is.
+
+Each effect declares which it reads through `IWallEffect.Controls`, and the window
+shows exactly those. A slider on screen is a promise that dragging it does
+something, and leaving all of them visible invites the reasonable conclusion that
+they ought to work.
+
+Worth noting what falls out of that: **Beat Flash and Tempo Pulse show no beat
+source control**, because each is deliberately pinned to one source. Not offering
+a switch is more honest than offering one that would be ignored.
+
+The shared strip sits below the tabs rather than inside them, so that one set of
+sliders serves both animation tabs — two copies would drift apart the moment one
+was dragged. It hides itself on Connections & Testing, where there is nothing for
+it to adjust.
+
+#### Column widths
+
+The right column used to be "whatever is left over" against a fixed-width left
+column, which on a wide screen meant two thirds of the window — most of it empty
+space either side of walls that had stopped growing. Two stacked walls plus their
+labels and readouts run out of *height* long before width, so past a point the
+extra width does nothing.
+
+It is now capped at 600, measured rather than guessed: the walls settle at about
+505 wide on a maximised window here, so the cap leaves them room to breathe
+without the gulf beside them. On a narrow window the cap never binds and the
+column simply takes its half.
 
 ### Output pipeline
 

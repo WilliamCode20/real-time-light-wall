@@ -137,8 +137,15 @@ rather than one shared object.
 - **No UI control for detaching output** — settable in code only.
 - **The Center X/Y offsets clip rather than wrap.** A wrap mode might be worth
   offering.
-- **`EffectCatalog.Diagnostics`** exists as a separate list but the window still
-  renders it inline with the procedural animations.
+- **The Speed slider does nothing to the breathing effects' pace relative to the
+  music.** It scales their movement but not the beats driving them, so away from
+  100% the two drift apart. That is a usable control rather than a fault, but it
+  is not obvious from the slider.
+
+Closed since this list was written: `EffectCatalog.Diagnostics` used to be
+rendered inline with the procedural animations, putting a hardware bring-up tool
+among the show effects. Identify Bulb now lives on the Connections & Testing tab,
+reached through the Hardware Check panel.
 
 ## Hardware follow-ups
 

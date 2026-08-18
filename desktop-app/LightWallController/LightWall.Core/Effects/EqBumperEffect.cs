@@ -63,6 +63,9 @@ namespace LightWall.Core.Effects
         public string DisplayName => "EQ Bumper";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        /// <inheritdoc />
         public string Description =>
             "A graphic equaliser: bass on the left, treble on the right, each " +
             "column following its own part of the sound. Start audio capture to " +

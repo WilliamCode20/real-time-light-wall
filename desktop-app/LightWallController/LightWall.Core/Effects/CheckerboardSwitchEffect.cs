@@ -56,6 +56,12 @@ namespace LightWall.Core.Effects
         public string DisplayName => "Checkerboard Switch";
 
         /// <inheritdoc />
+        public bool ReactsToAudio => true;
+
+        /// <inheritdoc />
+        public EffectControl Controls => EffectControl.BeatSource;
+
+        /// <inheritdoc />
         public string Description =>
             "A chequered pattern that swaps to its opposite on every beat. Half " +
             "the wall is always lit, and every bulb changes at once. Start audio " +

@@ -102,6 +102,19 @@ These are load-bearing. Breaking them causes real problems later.
 6. **Adding an effect means adding one entry to `EffectCatalog`.** The window
    builds its buttons from the catalog. Do not hard-code effect buttons in XAML.
 
+   Two declarations on the effect itself decide how the window treats it, and
+   both default to the quiet answer so most effects say nothing:
+
+   - `ReactsToAudio` puts it on the **Audio Reactivity** tab rather than
+     **Patterns & Animations**.
+   - `Controls` lists the effect-specific sliders it reads, and only those are
+     shown while it plays. Speed and the centre offsets are the engine's and are
+     always visible.
+
+   Never decide either of these from a list of effect names in the window. That
+   list would need editing alongside the catalog and would be wrong the first
+   time somebody forgot — the fault this rule exists to prevent.
+
 7. **Shared state crosses threads only as a copy, taken under a lock.** Three
    background threads exist — the show clock, the output service, and the audio
    callback. None reaches into anything else's state. Audio goes further and
