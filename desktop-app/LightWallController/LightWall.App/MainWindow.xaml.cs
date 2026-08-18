@@ -1098,7 +1098,11 @@ namespace LightWall.App
             }
 
             _audio.BeatSensitivity = BeatSensitivitySlider.Value;
-            BeatSensitivityValueTextBlock.Text = $"{BeatSensitivitySlider.Value:F2}x";
+
+            // No "x" suffix any more. This stopped being a multiplier when the
+            // threshold moved to typical-plus-spread; it is now a count of how
+            // many typical deviations above typical a jump has to reach.
+            BeatSensitivityValueTextBlock.Text = $"{BeatSensitivitySlider.Value:F1}";
         }
 
         /// <summary>

@@ -13,19 +13,22 @@ Everything below is improvement rather than missing foundation.
 These need someone listening to real music, which is the one thing no test can
 substitute for.
 
-### 1. Onset sensitivity — done, but worth revisiting
+### 1. Onset sensitivity — re-dial needed
 
-Both defaults have now been dialled in by ear rather than reasoned:
+- `MinimumSecondsBetweenBeats` is **0.20**, dialled in by ear from a starting 0.12.
+- `OnsetDetector.Sensitivity` is **5.0**, and **its units changed** — it is now a
+  count of deviations above the typical reading, not a multiplier on the average.
+  The old numbers around 1.4–1.7 mean nothing under it, and any feel you had for
+  the slider needs rebuilding.
 
-- `MinimumSecondsBetweenBeats` is **0.20**, raised from a starting 0.12.
-- `OnsetDetector.Sensitivity` is **1.7**, raised from a starting 1.4 because the
-  slider was being pushed up on most material.
+5.0 was measured against synthetic tracks of very different dynamics rather than
+guessed, and it is the first value for which one setting read all of them
+correctly. But synthetic noise is not music, so **this wants a session of
+listening before it can be called settled**.
 
-Neither is settled forever — they were judged on a fairly narrow slice of music,
-and a room with different material may want different numbers. Both are sliders
-in the window, **Beat size** and **Beat gap**, with a trigger meter and a beat
-lamp beside them, so re-judging them is a one-sitting job rather than one rebuild
-at a time.
+Both are sliders in the window, **Beat size** and **Beat gap**, with a trigger
+meter and a beat lamp beside them, so re-judging them is a one-sitting job rather
+than one rebuild at a time.
 
 How to read it:
 
@@ -38,6 +41,89 @@ How to read it:
   not the size, so Beat gap is the one to look at
 
 Whatever values feel right should become the defaults in `OnsetDetector`.
+
+### 1b. Making the tempo estimate trustworthy
+
+**The problem worth naming first.** Detection and prediction are held to
+completely different standards. A missed detection produces nothing, and nothing
+reads as musical restraint — the wall going quiet in a sparse passage looks
+deliberate. A wrong tempo keeps confidently firing at the wrong moments, and
+wrongness is loud. Detection hides its errors; prediction advertises them. So
+tempo has to be *considerably* better than detection before it feels equally
+good, which is why running on detected beats currently feels like a cheat code.
+
+Two faults observed across a range of real songs, in the order they are worth
+fixing:
+
+#### Breaks and interludes drop the BPM hard
+
+There are two failure modes here and only the second is actually biting.
+
+A genuinely *quiet* break is already handled: `ForgetAfterSeconds` holds the
+tempo for 30 s while confidence fades, and the metronome keeps counting.
+
+The one that hurts is a break that is not quiet but **different** — a pad, a
+vocal, an arpeggio, percussion dropped to half-time. There is no shortage of
+onsets; the estimator is not starving, it is being misled. And the structural
+weakness is that **the incumbent tempo is re-judged purely on the last 8 seconds
+with no memory of how well established it was.** A tempo that held for two
+minutes and one adopted four seconds ago are defended identically. Once a break
+is 8 s old, all the evidence is break evidence and the incumbent's score
+collapses with everything else.
+
+Three fixes, in value order:
+
+1. **Trust-weighted inertia.** Scale the switching margin by how long and how
+   confidently the incumbent has held. Two minutes of agreement should demand
+   overwhelming evidence; four seconds should be cheap to overturn. Smallest
+   change, targets "gets confused quickly" directly.
+2. **Octave awareness.** Breaks routinely halve the rhythmic density. If the best
+   challenger sits near 2× or ½× the incumbent, that is the same tempo counted
+   differently, not a rival — treat it as agreement rather than switching.
+3. **Band-aware onsets** (see below), so the estimator can tell "the drum went
+   away" from "the drum changed".
+
+#### Following the beat when the drums leave
+
+The idea worth building once the two above are in: **watch several bands at once,
+lean on the low end by default, and let the others carry the beat when the kick
+drops out.**
+
+The raw material already exists — `SpectrumAnalyser` produces seven band
+strengths and `OnsetDetector` already computes per-band flux internally before
+throwing the detail away by summing it. This is un-summing rather than computing
+something new.
+
+Two design notes that matter:
+
+- **Weight the bands, do not switch between them.** A hard switch has to pick a
+  moment to hand over, and that is where phase lurches come from. Contributions
+  weighted by how reliable each band has been lately mean a kick dropping out
+  lowers its own weight and the others rise to fill the gap — no seam, and it
+  degrades gracefully when *nothing* is reliable instead of picking the least-bad
+  option.
+- **Ask "does this band agree with the tempo I already have", not "does this band
+  have a consistent rhythm".** A syncopated melody is perfectly consistent and
+  actively misleading. Using the incumbent as a prior is far safer and dovetails
+  with trust-weighted inertia.
+
+Two traps: hi-hats usually run at double the beat, so following the top end
+through a break will lock to 2× unless octave awareness lands first — which is
+why it is sequenced second. And this is the largest of the three changes, so it
+should not be started until the cheaper two have been judged by ear.
+
+#### A test harness before any of it
+
+All of the above is currently judged one song at a time by ear, which cannot
+tell whether a change helped in general or only helped the song being played. A
+small offline harness — a folder of tracks with their true BPM written down, run
+through the analyser, reporting accuracy and time-to-lock — would let these be
+measured instead.
+
+That is this project's existing philosophy (test against answers known in
+advance) applied to the one part still judged by feel. It is also the only safe
+way to attempt any automatic tuning of sensitivity, which is otherwise very easy
+to get subtly and invisibly wrong.
 
 **Beat Flash** shows it on the wall, and **Tempo Pulse** is the cross-check: if
 it locks on well while Beat Flash looks wrong, the problem is sensitivity rather

@@ -297,10 +297,42 @@ increases. A hi-hat landing over a held bass note raises the high bands while th
 low ones are unchanged, so the flux jumps even though the overall level barely
 moves. Only increases count — a sound ending is not a sound starting.
 
-The threshold **follows the recent average** rather than being fixed. A beat is
-not "louder than some number" but "a bigger jump than this music has been making
-lately", which is much closer to what a listener notices, and works across dense
-and sparse material alike.
+The threshold **moves with the music** rather than being fixed. A beat is not
+"louder than some number" but "a bigger jump than this music has been making
+lately", which is much closer to what a listener notices.
+
+Specifically it is the **middle recent flux reading plus a share of how much
+readings normally vary** — not the average times a multiplier, which is what it
+used to be.
+
+That change was made because the sensitivity slider needed moving for nearly
+every song, anywhere from about 1 to 2.5, which is no use to somebody running a
+set. The cause is that an average is moved by the *shape* of the distribution and
+not just its level, in two directions at once. On sparse material the occasional
+huge flux spike drags the average above where ordinary readings sit, so the bar
+ends up out of reach of the very hits it is meant to catch. On dense, compressed
+material the readings bunch together so the average sits up among the peaks and
+almost nothing clears a multiple of it.
+
+Measuring the middle reading is immune to a handful of large values, and adding a
+share of the spread rather than multiplying the level is what makes one setting
+mean the same thing on both kinds of track. Measured across three synthetic
+tracks at identical tempo and peak loudness but very different dynamics:
+
+| Setting | Sparse | Moderate | Dense |
+|---|---|---|---|
+| 1.0 | 120 BPM, 100% | 119 BPM, 32% | 143 BPM, 29% |
+| 3.0 | 120 BPM, 100% | 119 BPM, 46% | 119 BPM, 42% |
+| **5.0** | **120 BPM, 100%** | **120 BPM, 94%** | **120 BPM, 88%** |
+
+That bottom row is the whole point — one setting reading all three correctly.
+Under the old threshold no such value existed. There is a test pinning it.
+
+`Sensitivity` is therefore now a **count of deviations, not a multiplier**, and
+defaults to 5. The old values around 1.4–1.7 mean nothing under it. Synthetic
+material only, so it is a well-founded starting point rather than a settled
+answer — real music has structure that noise does not, and it still wants
+dialling in by ear.
 
 Three separate guards, each ruling out a different false alarm: a minimum flux
 (so near-silence does not trigger), a rising-edge requirement (so the readings

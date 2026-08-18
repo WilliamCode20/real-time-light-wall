@@ -51,8 +51,28 @@ namespace LightWall.Core.Audio
         /// </summary>
         private const int HistoryLength = 48;
 
+        /// <summary>
+        /// How many readings are needed before the threshold means anything.
+        ///
+        /// The threshold now describes how much readings normally vary, and
+        /// variation cannot be measured from two numbers. Eight is about a
+        /// twelfth of a second, so nothing is lost at the start of a track.
+        /// </summary>
+        private const int MinimumHistoryToJudge = 8;
+
         /// <summary>Recent flux values, used to work out what is normal.</summary>
         private readonly double[] _history = new double[HistoryLength];
+
+        /// <summary>
+        /// Working space for sorting the history when finding a middle value.
+        ///
+        /// Kept as a field rather than made fresh each time because this runs on
+        /// the audio thread about a hundred times a second, and that thread must
+        /// not be given avoidable work - a new array per reading would be six
+        /// thousand short-lived objects a minute for the garbage collector to
+        /// deal with.
+        /// </summary>
+        private readonly double[] _sortingSpace = new double[HistoryLength];
 
         /// <summary>Where the next reading goes in the ring of history.</summary>
         private int _historyPosition;
@@ -70,18 +90,40 @@ namespace LightWall.Core.Audio
         private double _lastBeatSeconds = double.NegativeInfinity;
 
         /// <summary>
-        /// How much bigger than the recent average a jump must be to count.
+        /// How far above the usual a jump has to be to count as a beat, measured
+        /// in units of how much readings normally vary.
         ///
         /// Lower finds more beats but starts reporting ordinary texture as
         /// beats; higher only catches the most obvious hits and misses softer
         /// ones.
         ///
-        /// 1.7 was arrived at by ear rather than by reasoning. The first value
-        /// here was 1.4, which was a defensible guess and turned out to be
-        /// consistently a little low - the slider was being pushed up on most
-        /// material, which is about as clear a signal as tuning by ear produces.
+        /// THE UNITS CHANGED, AND SO DID THE NUMBER
+        ///
+        /// This used to be a multiplier on the average flux, and ran from about
+        /// 1 to 3. It is now a multiple of the SPREAD added to the middle
+        /// reading, which is a different quantity, so the old numbers mean
+        /// nothing here - see ComputeThreshold for why the change was made.
+        ///
+        /// 5 was measured rather than guessed. Three synthetic tracks were
+        /// played at the same tempo and loudness but with very different
+        /// dynamics - near-silence between hits, moderate texture, and dense
+        /// texture - and swept across settings from 0.5 to 6:
+        ///
+        ///   setting     sparse          moderate         dense
+        ///     1.0     120 bpm 100%    119 bpm  32%    143 bpm  29%
+        ///     3.0     120 bpm 100%    119 bpm  46%    119 bpm  42%
+        ///     5.0     120 bpm 100%    120 bpm  94%    120 bpm  88%
+        ///
+        /// The point of the whole change is that bottom row: one setting that
+        /// reads all three correctly. Under the old average-based threshold no
+        /// such value existed, which is why the slider was being moved for
+        /// nearly every song.
+        ///
+        /// Synthetic material only, though. Real music has structure that white
+        /// noise does not, so this is a well-founded starting point rather than
+        /// a settled answer - it still wants dialling in by ear.
         /// </summary>
-        public double Sensitivity { get; set; } = 1.7;
+        public double Sensitivity { get; set; } = 5.0;
 
         /// <summary>
         /// The shortest gap allowed between two beats, in seconds.
@@ -282,22 +324,89 @@ namespace LightWall.Core.Audio
 
         /// <summary>
         /// Works out what counts as a big jump, based on recent history.
+        ///
+        /// TYPICAL, PLUS A MEASURE OF HOW MUCH THINGS NORMALLY VARY
+        ///
+        /// The threshold is the middle flux reading of recent history, plus
+        /// Sensitivity times how far readings usually sit from that middle. So a
+        /// beat is not "louder than average" but "further above the usual than
+        /// readings usually get" - which is much closer to what a listener
+        /// actually notices, and is the same question whatever the music is.
+        ///
+        /// WHAT THIS REPLACED, AND WHY IT NEEDED REPLACING
+        ///
+        /// It used to be the plain average of recent flux times Sensitivity.
+        /// That worked, and it needed a different Sensitivity for almost every
+        /// song - anywhere from about 1 to 2.5 - which is no use at all to
+        /// somebody running a set.
+        ///
+        /// The reason is that an average is pulled about by the SHAPE of the
+        /// distribution and not just its level, in two directions at once.
+        ///
+        /// On sparse material - acoustic drums, lots of space - the occasional
+        /// huge flux spike drags the average up well above where ordinary
+        /// readings sit, so the threshold ends up too high and softer hits are
+        /// missed. The very hits being measured are what push the bar out of
+        /// their own reach.
+        ///
+        /// On dense, heavily compressed material the opposite: readings are
+        /// bunched close together, so the average sits right up among the peaks
+        /// and almost nothing can clear a multiple of it.
+        ///
+        /// Both faults come from measuring the level and ignoring the spread.
+        /// The middle value is not dragged about by a handful of large readings,
+        /// and adding a share of the spread rather than multiplying the level is
+        /// what makes one setting mean the same thing on both kinds of track.
+        ///
+        /// Note this is the same lesson TempoEstimator learned: prefer the
+        /// middle value to the average whenever a few extreme readings are
+        /// expected, because they are exactly what the answer should ignore.
         /// </summary>
         private double ComputeThreshold()
         {
-            if (_historyCount == 0)
+            // Below a few readings there is no meaningful spread to measure, and
+            // a threshold guessed from two numbers would let anything through.
+            // The largest number there is means "not ready to judge yet".
+            if (_historyCount < MinimumHistoryToJudge)
             {
                 return double.MaxValue;
             }
 
-            double total = 0.0;
+            double typical = MiddleOfHistory();
+            double spread = MiddleDistanceFrom(typical);
 
+            return typical + (Sensitivity * spread);
+        }
+
+        /// <summary>
+        /// The middle flux reading of recent history.
+        /// </summary>
+        private double MiddleOfHistory()
+        {
+            Array.Copy(_history, _sortingSpace, _historyCount);
+            Array.Sort(_sortingSpace, 0, _historyCount);
+
+            return _sortingSpace[_historyCount / 2];
+        }
+
+        /// <summary>
+        /// How far a reading usually sits from the middle one.
+        ///
+        /// The middle of all the distances, rather than the average of them -
+        /// for the same reason the middle is used above. A couple of enormous
+        /// readings should not be allowed to widen what counts as normal
+        /// variation, since those readings are the beats.
+        /// </summary>
+        private double MiddleDistanceFrom(double typical)
+        {
             for (int i = 0; i < _historyCount; i++)
             {
-                total += _history[i];
+                _sortingSpace[i] = Math.Abs(_history[i] - typical);
             }
 
-            return (total / _historyCount) * Sensitivity;
+            Array.Sort(_sortingSpace, 0, _historyCount);
+
+            return _sortingSpace[_historyCount / 2];
         }
 
         /// <summary>

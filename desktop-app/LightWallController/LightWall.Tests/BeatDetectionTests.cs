@@ -541,6 +541,67 @@ namespace LightWall.Tests
             Assert.True(AudioFeatures.Silence.SecondsSinceBeat > 100.0);
         }
 
+        /// <summary>
+        /// Plays a steady beat with a chosen amount of texture between the hits,
+        /// so that tracks of very different dynamics can be compared.
+        /// </summary>
+        private static AudioFeatures PlayBeatWithTexture(double betweenHits)
+        {
+            var analyser = new AudioAnalyser(SampleRate);
+            var random = new Random(4242);
+
+            const double bufferSeconds = 0.01;
+            int bufferSamples = (int)(SampleRate * bufferSeconds);
+
+            double elapsed = 0.0;
+            AudioFeatures features = AudioFeatures.Silence;
+
+            while (elapsed < 12.0)
+            {
+                double intoBeat = elapsed % 0.5;
+
+                float[] buffer = intoBeat < 0.03
+                    ? MakeHit(bufferSamples, random)
+                    : MakeHit(bufferSamples, random, betweenHits);
+
+                features = analyser.Process(buffer, 1, bufferSeconds);
+                elapsed += bufferSeconds;
+            }
+
+            return features;
+        }
+
+        /// <summary>
+        /// THE REASON THE THRESHOLD MOVED OFF THE AVERAGE.
+        ///
+        /// Three tracks at the same tempo and the same peak loudness, differing
+        /// only in how much is going on between the hits - near silence, moderate
+        /// texture, and a dense wash. All three must read correctly at the SAME
+        /// setting, because a person running a set cannot re-tune per song.
+        ///
+        /// This is what the old average-based threshold could not do. An average
+        /// is moved by the shape of the distribution as well as its level: on
+        /// sparse material the occasional huge reading drags the bar up out of
+        /// reach of ordinary hits, and on dense material the average sits up
+        /// among the peaks so nothing clears a multiple of it. Measured across
+        /// these three tracks, no single setting read all of them right.
+        /// </summary>
+        [Theory]
+        [InlineData(0.01)]
+        [InlineData(0.10)]
+        [InlineData(0.35)]
+        public void OneSensitivityWorksAcrossVeryDifferentDynamics(double betweenHits)
+        {
+            AudioFeatures features = PlayBeatWithTexture(betweenHits);
+
+            Assert.InRange(features.TempoBpm, 115.0, 125.0);
+
+            Assert.True(
+                features.TempoConfidence > 0.75,
+                $"Texture {betweenHits} gave {features.TempoConfidence:P0} confidence at the " +
+                "default setting, so this material would need the slider moved.");
+        }
+
         // ------------------------------------------------------------------
         // The trigger meter
         //

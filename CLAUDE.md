@@ -208,6 +208,16 @@ Non-obvious decisions worth not undoing:
   plays, rather than sending zeros.
 - **Beat detection uses raw band strengths**, not smoothed ones — smoothing
   rounds off exactly the sharp rise an onset consists of.
+- **The onset threshold is typical-plus-spread, not average-times-a-multiplier.**
+  An average is moved by the *shape* of the flux distribution and not just its
+  level, in both directions: on sparse material the occasional huge reading drags
+  the bar out of reach of ordinary hits, and on dense material it sits up among
+  the peaks so nothing clears a multiple of it. That is why the sensitivity
+  slider used to need moving for nearly every song. Measuring the middle reading
+  and adding a share of how much readings normally vary makes one setting mean
+  the same thing on both kinds of track. `Sensitivity` is therefore a count of
+  deviations (about 5), *not* a multiplier — the old values around 1.4–1.7 mean
+  nothing under it.
 - **Tempo is held through quiet passages** (30 s) while *confidence* fades. An
   earlier version wiped it after 3 s, which erased the estimate during exactly
   the breakdowns where holding the beat matters most.
