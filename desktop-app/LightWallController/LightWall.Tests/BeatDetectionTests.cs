@@ -645,6 +645,65 @@ namespace LightWall.Tests
         }
 
         [Fact]
+        public void AWrongMultipleCorrectsItselfRatherThanHoldingForever()
+        {
+            // REPORTED FROM LISTENING: "it got the wrong BPM and just held onto
+            // it, even as it kept detecting beats."
+            //
+            // Absorbing readings related by a simple ratio was meant to stop a
+            // change of feel being read as a change of speed. Done naively it
+            // creates a trap instead: once the estimator is at the wrong
+            // multiple, every correct reading arriving afterwards is folded back
+            // onto the wrong one and swallowed as agreement, so the wrong answer
+            // defends itself permanently and grows more trusted the longer it is
+            // wrong.
+            //
+            // Here the estimator is deliberately walked into that state - a long
+            // opening of sounds every third of a second settles it at 180 - and
+            // then given plain 120 BPM material. It has to find its way back.
+            var estimator = new TempoEstimator();
+
+            const double tick = 0.005;
+            double nextBeat = 0.0;
+            double correctedAt = -1.0;
+
+            for (double now = 0.0; now <= 110.0; now += tick)
+            {
+                double interval = now < 45.0 ? (1.0 / 3.0) : 0.5;
+
+                if (now >= nextBeat)
+                {
+                    estimator.AddBeat(now);
+                    nextBeat = now + interval;
+                }
+
+                estimator.Update(now);
+
+                if (now < 44.0)
+                {
+                    continue;
+                }
+
+                if (correctedAt < 0.0 && Math.Abs(estimator.Bpm - 120.0) < 4.0)
+                {
+                    correctedAt = now - 45.0;
+                }
+            }
+
+            Assert.True(
+                correctedAt >= 0.0,
+                $"Still reading {estimator.Bpm:F1} after a minute of plain 120 BPM - " +
+                "the wrong multiple has locked itself in permanently.");
+
+            // It should take real persuading, since a section that changes feel
+            // must not be able to do it - but not the whole song.
+            Assert.True(
+                correctedAt < 45.0,
+                $"Took {correctedAt:F0}s to correct, which is long enough to be the " +
+                "whole of a short track.");
+        }
+
+        [Fact]
         public void ABriefWobbleDoesNotShiftASettledTempo()
         {
             // Two seconds of a different tempo in the middle of a settled track -
@@ -830,6 +889,93 @@ namespace LightWall.Tests
                 features.TempoConfidence > 0.75,
                 $"Texture {betweenHits} gave {features.TempoConfidence:P0} confidence at the " +
                 "default setting, so this material would need the slider moved.");
+        }
+
+        // ------------------------------------------------------------------
+        // Keeping the sensitivity workable without a person at the slider
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Plays a track with a chosen amount of texture at a deliberately bad
+        /// starting sensitivity, and reports where automatic adjustment took it
+        /// and what tempo came out.
+        /// </summary>
+        private static (double settledAt, double bpm) PlayWithAutoSensitivity(
+            double betweenHits, double startingSensitivity)
+        {
+            var analyser = new AudioAnalyser(SampleRate);
+            analyser.Onsets.Sensitivity = startingSensitivity;
+            analyser.Onsets.AutoSensitivity = true;
+
+            var random = new Random(4242);
+            const double bufferSeconds = 0.01;
+            int bufferSamples = (int)(SampleRate * bufferSeconds);
+
+            double elapsed = 0.0;
+            AudioFeatures features = AudioFeatures.Silence;
+
+            while (elapsed < 60.0)
+            {
+                double intoBeat = elapsed % 0.5;
+
+                float[] buffer = intoBeat < 0.03
+                    ? MakeHit(bufferSamples, random)
+                    : MakeHit(bufferSamples, random, betweenHits);
+
+                features = analyser.Process(buffer, 1, bufferSeconds);
+                elapsed += bufferSeconds;
+            }
+
+            return (analyser.Onsets.Sensitivity, features.TempoBpm);
+        }
+
+        /// <summary>
+        /// THE POINT OF AUTOMATIC ADJUSTMENT.
+        ///
+        /// Started at a setting badly wrong for the material in each direction,
+        /// it has to find its own way somewhere workable and read the tempo
+        /// correctly - without anybody touching the slider.
+        ///
+        /// It does not aim at a "correct" sensitivity, because nothing here can
+        /// measure that. It aims at finding a PLAUSIBLE NUMBER of things: music
+        /// runs 70 to 180 beats a minute and carries off-beat sounds too, so far
+        /// outside a couple to a handful of detections a second means the knob
+        /// wants moving in a known direction.
+        /// </summary>
+        [Theory]
+        [InlineData(0.35, 1.5)]   // dense track, started far too loose
+        [InlineData(0.35, 12.0)]  // dense track, started far too tight
+        [InlineData(0.01, 12.0)]  // sparse track, started far too tight
+        public void AutomaticSensitivityFindsAWorkableSettingByItself(
+            double betweenHits, double startingSensitivity)
+        {
+            (double settledAt, double bpm) = PlayWithAutoSensitivity(betweenHits, startingSensitivity);
+
+            Assert.InRange(bpm, 115.0, 125.0);
+
+            // Staying put is a perfectly good answer where the starting setting
+            // already worked - sparse material reads correctly across the whole
+            // range. What matters is that it never leaves the bounds.
+            Assert.InRange(settledAt, 1.5, 12.0);
+        }
+
+        [Fact]
+        public void AutomaticSensitivityIsNotWalkedDownBySilence()
+        {
+            // Silence reads as "finding nothing", which naively would loosen the
+            // setting all the way to its minimum and leave the next track
+            // triggering on everything it heard. Nothing should move while
+            // nothing is playing.
+            var analyser = new AudioAnalyser(SampleRate);
+            analyser.Onsets.Sensitivity = 5.0;
+            analyser.Onsets.AutoSensitivity = true;
+
+            for (int i = 0; i < 6000; i++)
+            {
+                analyser.ProcessSilence(0.01);
+            }
+
+            Assert.Equal(5.0, analyser.Onsets.Sensitivity, precision: 3);
         }
 
         // ------------------------------------------------------------------

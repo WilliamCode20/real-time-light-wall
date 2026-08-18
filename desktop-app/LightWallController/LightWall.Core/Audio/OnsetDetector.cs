@@ -170,6 +170,81 @@ namespace LightWall.Core.Audio
         /// </summary>
         public double MinimumFlux { get; set; } = 0.01;
 
+        /// <summary>
+        /// Whether the detector should keep its own sensitivity in a workable
+        /// range instead of leaving it to the person at the slider.
+        ///
+        /// WHAT IT AIMS AT, AND WHY NOT SOMETHING CLEVERER
+        ///
+        /// It does not try to find the "right" sensitivity, because there is no
+        /// measurement of right available at this level - the detector cannot
+        /// tell a beat from a well-timed guitar chord. What it can tell is
+        /// whether it is finding a PLAUSIBLE NUMBER of things.
+        ///
+        /// Music runs from about 70 to 180 beats a minute, and real tracks carry
+        /// off-beat sounds as well, so somewhere between roughly two and five
+        /// detections a second is the healthy band. Far above it and ordinary
+        /// texture is being reported as beats; far below and obvious hits are
+        /// being missed. Either way the fix is the same knob in a known
+        /// direction, which is what makes this safe to automate when hunting for
+        /// the true tempo would not be.
+        ///
+        /// DELIBERATELY SLOW AND BOUNDED
+        ///
+        /// It judges over four seconds at a time and moves in small steps, so it
+        /// drifts across a song rather than chasing a bar. It never leaves a
+        /// sensible range. And it only judges when there is real audio to judge,
+        /// so silence cannot walk it down to nothing and leave the next track
+        /// triggering on everything.
+        ///
+        /// Off by default. Automatic behaviour that quietly disagrees with a
+        /// slider somebody has just set is worse than no automatic behaviour.
+        /// </summary>
+        public bool AutoSensitivity { get; set; }
+
+        /// <summary>How often the detection rate is judged, in seconds.</summary>
+        private const double AutoWindowSeconds = 4.0;
+
+        /// <summary>
+        /// The healthy band of detections per second.
+        ///
+        /// The bottom is set by the slowest music worth following: 70 beats a
+        /// minute is 1.17 a second, so anything at or below 1.0 means obvious
+        /// hits are going missing rather than the music simply being slow.
+        ///
+        /// The top has to sit clear of a ceiling that is easy to miss.
+        /// MinimumSecondsBetweenBeats caps the rate at five a second on its own,
+        /// so a first attempt using 5.0 here could never fire - a detector
+        /// triggering on absolutely everything sat exactly at the limit and was
+        /// read as healthy. Measured: a dense track started far too loose stayed
+        /// there and reported 77 BPM for a 120 BPM signal. 3.5 leaves room above
+        /// the three a second that 180 BPM music produces while still being
+        /// reachable.
+        /// </summary>
+        private const double AutoFewestPerSecond = 1.0;
+        private const double AutoMostPerSecond = 3.5;
+
+        /// <summary>
+        /// How far sensitivity moves in one step, as a multiplier.
+        ///
+        /// Tightening is slightly brisker than loosening. Over-detection reads
+        /// as noise and wants dealing with promptly; under-detection reads as
+        /// restraint, so creeping down towards it is the safer direction to be
+        /// slow in.
+        /// </summary>
+        private const double AutoTightenStep = 1.15;
+        private const double AutoLoosenStep = 0.93;
+
+        /// <summary>The range automatic adjustment will not leave.</summary>
+        private const double AutoLowest = 1.5;
+        private const double AutoHighest = 12.0;
+
+        /// <summary>When the current judging window began.</summary>
+        private double _autoWindowStartSeconds;
+
+        /// <summary>How many beats have been reported in it.</summary>
+        private int _detectionsThisWindow;
+
         /// <summary>The most recent flux value. Useful for diagnostics.</summary>
         public double CurrentFlux { get; private set; }
 
@@ -244,7 +319,60 @@ namespace LightWall.Core.Audio
             RecordFlux(flux);
             _previousFlux = flux;
 
+            if (isBeat)
+            {
+                _detectionsThisWindow++;
+            }
+
+            KeepSensitivityWorkable(nowSeconds);
+
             return isBeat;
+        }
+
+        /// <summary>
+        /// Nudges the sensitivity when the detector is plainly finding too many
+        /// things or too few. See AutoSensitivity.
+        /// </summary>
+        private void KeepSensitivityWorkable(double nowSeconds)
+        {
+            if (!AutoSensitivity)
+            {
+                // Keep the window rolling anyway, so switching this on does not
+                // immediately act on a count gathered while it was off.
+                _autoWindowStartSeconds = nowSeconds;
+                _detectionsThisWindow = 0;
+                return;
+            }
+
+            double elapsed = nowSeconds - _autoWindowStartSeconds;
+
+            if (elapsed < AutoWindowSeconds)
+            {
+                return;
+            }
+
+            // Only judge when there is something to judge. Without this, silence
+            // reads as "finding nothing" and would walk the sensitivity all the
+            // way down, leaving the next track triggering on everything it hears.
+            bool somethingIsPlaying =
+                _historyCount >= MinimumHistoryToJudge && MiddleOfHistory() > MinimumFlux;
+
+            if (somethingIsPlaying)
+            {
+                double perSecond = _detectionsThisWindow / elapsed;
+
+                if (perSecond > AutoMostPerSecond)
+                {
+                    Sensitivity = Math.Min(Sensitivity * AutoTightenStep, AutoHighest);
+                }
+                else if (perSecond < AutoFewestPerSecond)
+                {
+                    Sensitivity = Math.Max(Sensitivity * AutoLoosenStep, AutoLowest);
+                }
+            }
+
+            _autoWindowStartSeconds = nowSeconds;
+            _detectionsThisWindow = 0;
         }
 
         /// <summary>

@@ -241,6 +241,34 @@ namespace LightWall.Core.Audio
         /// </summary>
         private const double TrustToAbsorbRelatedTempos = 0.5;
 
+        /// <summary>
+        /// How much longer a reading related by a simple ratio has to hold on
+        /// before it takes over.
+        ///
+        /// At full trust the ordinary hold is eight seconds, so this makes it
+        /// twenty-four - comfortably longer than a break that changes feel, and
+        /// still short enough that a genuinely wrong multiple corrects itself
+        /// inside half a minute rather than lasting the whole song.
+        /// </summary>
+        private const double RelatedReadingHoldMultiplier = 3.0;
+
+        /// <summary>
+        /// How well the settled tempo has to be doing before agreement counts
+        /// towards trust.
+        ///
+        /// WHY TRUST HAS TO BE EARNED RATHER THAN JUST WAITED FOR
+        ///
+        /// Trust used to grow whenever nothing was actively beating the settled
+        /// tempo, merely in proportion to confidence. A mediocre answer therefore
+        /// still crept towards full trust given a long enough song, and then
+        /// defended itself as though it had been right all along.
+        ///
+        /// A tempo that only half the sounds agree with has not earned the right
+        /// to resist correction. Below this it holds its ground but stops
+        /// gaining, so a poor answer stays as easy to shift as it was to adopt.
+        /// </summary>
+        private const double ConfidenceToEarnTrust = 0.5;
+
         /// <summary>How much the settled tempo has earned, from 0 to 1.</summary>
         private double _trust;
 
@@ -522,11 +550,15 @@ namespace LightWall.Core.Audio
             {
                 _trust -= elapsed / TrustDecaySeconds;
             }
-            else
+            else if (_measuredConfidence >= ConfidenceToEarnTrust)
             {
                 _trust += elapsed * _measuredConfidence / TrustBuildSeconds;
             }
 
+            // Note the missing third case: an answer that nothing is beating but
+            // that only half the sounds agree with neither gains nor loses. It
+            // keeps whatever it has already earned and stops climbing, so a
+            // mediocre reading cannot reach full trust just by lasting a while.
             _trust = Math.Clamp(_trust, 0.0, 1.0);
         }
 
@@ -784,16 +816,20 @@ namespace LightWall.Core.Audio
             // measured a rock-steady 120 before this was written. They are
             // included because relying on the range to keep covering that is
             // luck rather than design, and the cost of listing them is nothing.
+            // Is this reading the same tempo counted differently?
+            bool relatedReading = false;
+
             if (_trust >= TrustToAbsorbRelatedTempos)
             {
                 double folded = FoldTowards(measuredBpm, Bpm);
 
                 if (Math.Abs(folded - Bpm) <= Bpm * DistinctTempoTolerance)
                 {
+                    relatedReading = true;
+
+                    // Keep refining the settled reading from it, since a related
+                    // reading still carries information about the true speed.
                     Bpm += (folded - Bpm) * 0.25;
-                    _challengerBpm = 0.0;
-                    _challengerLeading = false;
-                    return;
                 }
             }
 
@@ -828,7 +864,12 @@ namespace LightWall.Core.Audio
 
             // Something credible is leading, so the settled tempo starts losing
             // ground whether or not this particular challenger ever wins.
-            _challengerLeading = true;
+            //
+            // A related reading is the exception. It is usually a section that
+            // changed feel rather than evidence of anything being wrong, so it
+            // must not erode trust - otherwise a long break would grind the
+            // settled tempo's defences down and flip it after all.
+            _challengerLeading = !relatedReading;
 
             bool sameChallengerAsLastTime =
                 _challengerBpm > 0.0 &&
@@ -848,6 +889,34 @@ namespace LightWall.Core.Audio
             // challenge goes on.
             double requiredHold = SecondsToOverturnWhenNew +
                 (_trust * (SecondsToOverturn - SecondsToOverturnWhenNew));
+
+            // A RELATED READING HAS TO WORK MUCH HARDER, BUT NOT FOREVER.
+            //
+            // The first attempt at this absorbed related readings outright and
+            // returned. That was a trap: if the estimator latched onto 180 for
+            // music that is really 120, every later reading of 120 was folded
+            // back onto 180 and swallowed as agreement, so the wrong answer
+            // defended itself permanently and grew more trusted the longer it
+            // was wrong. Reported from listening as "it got the wrong BPM and
+            // just held onto it".
+            //
+            // The second attempt let a related reading correct the settled one
+            // as soon as it explained the music better. That failed the other
+            // way, and the break tests caught it immediately: during a triplet
+            // section the 180 reading genuinely DOES explain the sounds better,
+            // so it corrected straight to 180 - exactly what absorbing was
+            // meant to prevent.
+            //
+            // What separates the two cases is not which fits better. It is how
+            // long it lasts. A section that changed feel ends; a wrong multiple
+            // does not. So a related reading is a challenger like any other,
+            // just one that has to hold on for far longer - long enough that no
+            // realistic break outlasts it, short enough that a genuinely wrong
+            // multiple still puts itself right without help.
+            if (relatedReading)
+            {
+                requiredHold *= RelatedReadingHoldMultiplier;
+            }
 
             if (_lastOnsetSeconds - _challengerSinceSeconds >= requiredHold)
             {

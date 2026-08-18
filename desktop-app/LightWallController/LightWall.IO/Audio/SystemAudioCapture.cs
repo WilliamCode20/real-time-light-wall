@@ -162,6 +162,19 @@ namespace LightWall.IO.Audio
         }
 
         /// <summary>
+        /// Whether the detector keeps its own beat sensitivity in a workable
+        /// range instead of leaving it to the slider.
+        ///
+        /// See OnsetDetector.AutoSensitivity. When this is on, reading
+        /// BeatSensitivity reports whatever it has settled on.
+        /// </summary>
+        public bool AutoBeatSensitivity
+        {
+            get => _analyser.Onsets.AutoSensitivity;
+            set => _analyser.Onsets.AutoSensitivity = value;
+        }
+
+        /// <summary>
         /// The shortest gap allowed between two beats, in seconds.
         ///
         /// Raise it if one drum hit is being reported as two or three. See

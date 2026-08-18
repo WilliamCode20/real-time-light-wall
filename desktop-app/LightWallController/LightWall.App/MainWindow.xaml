@@ -700,6 +700,8 @@
                         <ColumnDefinition Width="110"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="60"/>
+                        <!-- The Auto toggle, which the other rows do not have. -->
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <TextBlock Grid.Column="0"
@@ -720,6 +722,17 @@
                             VerticalAlignment="Center"
                             ToolTip="How far above the usual a jump must be to count as a beat. Flashing too often means raise it; missing obvious hits means lower it."
                             ValueChanged="BeatSensitivitySlider_ValueChanged"/>
+
+                    <CheckBox x:Name="AutoBeatSizeCheckBox"
+                              Grid.Column="3"
+                              Content="Auto"
+                              Foreground="#DDDDDD"
+                              FontSize="12"
+                              VerticalAlignment="Center"
+                              Margin="10,0,0,0"
+                              ToolTip="Keeps Beat size in a range where a plausible number of beats is being found, adjusting slowly as the music changes. Turn off to set it by hand."
+                              Checked="AutoBeatSizeCheckBox_Changed"
+                              Unchecked="AutoBeatSizeCheckBox_Changed"/>
 
                     <TextBlock x:Name="BeatSensitivityValueTextBlock"
                                Grid.Column="2"

@@ -461,6 +461,66 @@ by any simple ratio and is still treated as a real challenger — there is a tes
 guarding that, because absorbing related tempos must not slide into absorbing
 everything.
 
+#### The trap this created, and how it was got out of
+
+Reported from listening: *"it got the wrong BPM and just held onto it, even as it
+kept detecting beats."* That was this feature, done naively, and it is worth
+recording because both obvious fixes are wrong in opposite directions.
+
+**Attempt one — absorb related readings outright.** If the estimator latched onto
+180 for music that is really 120, every later reading of 120 was folded back onto
+180 and swallowed as agreement. The wrong answer defended itself permanently and
+grew *more* trusted the longer it was wrong.
+
+**Attempt two — let a related reading correct the settled one as soon as it
+explains the music better.** The break tests caught this within a minute: during a
+triplet section the 180 reading genuinely *does* explain the sounds better, so it
+corrected straight to 180 — exactly what absorbing was meant to prevent.
+
+**What actually separates the two cases is not which fits better. It is how long
+it lasts.** A section that changed feel ends; a wrong multiple does not. So a
+related reading is a challenger like any other, just one that has to hold on
+three times as long — about 24 seconds at full trust. No realistic break outlasts
+that, and a genuinely wrong multiple still puts itself right inside half a minute
+without anybody intervening. A test walks the estimator into the wrong multiple
+deliberately and checks it finds its way back.
+
+**Trust also has to be earned, not just waited for.** It used to grow whenever
+nothing was actively beating the settled tempo, so a mediocre answer still crept
+to full trust given a long enough song and then defended itself as though it had
+been right all along. Agreement now only counts towards trust when confidence is
+at least 0.5; below that a tempo keeps what it has but stops climbing.
+
+### Beat size that looks after itself
+
+The **Auto** tick-box beside Beat size lets the detector keep its own sensitivity
+in a workable range, which is what a person running a set actually needs — the
+setting that suits one track is often wrong for the next.
+
+**It does not try to find the "right" sensitivity**, because nothing at this level
+can measure that; the detector cannot tell a beat from a well-timed guitar chord.
+It aims at finding a *plausible number of things*. Music runs 70–180 BPM and
+carries off-beat sounds too, so outside roughly 1 to 3.5 detections a second the
+knob wants moving in a known direction. That asymmetry — unable to judge
+correctness, able to judge plausibility — is what makes this safe to automate when
+hunting the true tempo would not be.
+
+Deliberately slow and bounded: it judges over four seconds at a time, moves in
+small steps, and never leaves 1.5–12. Tightening is slightly brisker than
+loosening, because over-detection reads as noise and wants dealing with promptly
+while under-detection reads as restraint.
+
+**Two traps found by testing.** Silence reads as "finding nothing", which would
+walk the setting down to its minimum and leave the next track triggering on
+everything — so it only judges when there is real audio. And the first upper bound
+was set at 5.0 per second, which `MinimumSecondsBetweenBeats` makes *unreachable*:
+a detector triggering on absolutely everything sits exactly at that cap and was
+read as healthy. A dense track started far too loose stayed there and reported 77
+BPM for a 120 BPM signal.
+
+Off by default. Automatic behaviour that quietly disagrees with a slider somebody
+has just set is worse than none.
+
 #### The version before this, and how it failed
 
 Worth recording, because it was convincing and wrong.

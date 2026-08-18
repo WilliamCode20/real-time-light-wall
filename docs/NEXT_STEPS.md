@@ -26,6 +26,13 @@ guessed, and it is the first value for which one setting read all of them
 correctly. But synthetic noise is not music, so **this wants a session of
 listening before it can be called settled**.
 
+**There is now an Auto tick-box beside it**, which keeps the setting in a range
+where a plausible number of beats is being found and drifts it slowly as the
+music changes. That was added because the value that suits one track is often
+wrong for the next — which is a fact about music rather than a fault to be tuned
+out. It is off by default; try it against a mixed set and see whether it beats
+picking a fixed value by hand.
+
 Both are sliders in the window, **Beat size** and **Beat gap**, with a trigger
 meter and a beat lamp beside them, so re-judging them is a one-sitting job rather
 than one rebuild at a time.

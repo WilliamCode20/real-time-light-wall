@@ -942,6 +942,7 @@ namespace LightWall.App
             SetBarWidth(AudioPeakBar, features.Peak);
 
             UpdateBeatMeters(features, deltaSeconds);
+            ShowAutomaticBeatSize();
 
             if (_audio.LastError is not null)
             {
@@ -1103,6 +1104,58 @@ namespace LightWall.App
             // threshold moved to typical-plus-spread; it is now a count of how
             // many typical deviations above typical a jump has to reach.
             BeatSensitivityValueTextBlock.Text = $"{BeatSensitivitySlider.Value:F1}";
+        }
+
+        /// <summary>
+        /// Runs when the Auto tick-box beside Beat size is changed.
+        /// </summary>
+        private void AutoBeatSizeCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            // Raised while the window is still being built.
+            if (BeatSensitivitySlider is null)
+            {
+                return;
+            }
+
+            bool automatic = AutoBeatSizeCheckBox.IsChecked == true;
+
+            _audio.AutoBeatSensitivity = automatic;
+
+            // The slider becomes a readout while automatic, since dragging it
+            // would only be overwritten a few seconds later. Leaving it live
+            // would be a control that silently does not work.
+            BeatSensitivitySlider.IsEnabled = !automatic;
+
+            if (!automatic)
+            {
+                // Hand back whatever it settled on rather than snapping to
+                // wherever the slider happened to be left.
+                _audio.BeatSensitivity = BeatSensitivitySlider.Value;
+            }
+        }
+
+        /// <summary>
+        /// Moves the Beat size slider to wherever automatic adjustment has taken
+        /// it, so the number on screen is the number in force.
+        /// </summary>
+        private void ShowAutomaticBeatSize()
+        {
+            if (AutoBeatSizeCheckBox.IsChecked != true)
+            {
+                return;
+            }
+
+            double chosen = _audio.BeatSensitivity;
+
+            // Only when it has actually moved. Assigning Value raises
+            // ValueChanged, which would write the same figure straight back into
+            // the detector every frame for no reason.
+            if (Math.Abs(chosen - BeatSensitivitySlider.Value) < 0.01)
+            {
+                return;
+            }
+
+            BeatSensitivitySlider.Value = chosen;
         }
 
         /// <summary>
