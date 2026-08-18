@@ -392,38 +392,171 @@ namespace LightWall.Tests
             Assert.InRange(estimator.Bpm, 147.0, 153.0);
         }
 
-        [Fact]
-        public void ARealTempoChangeIsRefusedWhileTheHoldIsLongEnough()
+        // ------------------------------------------------------------------
+        // Trust: how hard a settled tempo is to shift
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Plays a timeline of tempo sections through the estimator, ticking its
+        /// clock the way AudioAnalyser does, and samples what it reported.
+        ///
+        /// Ticking matters. Trust moves with TIME rather than with beats, so a
+        /// test that only calls AddBeat never builds any and would be measuring
+        /// a mechanism that never engaged.
+        ///
+        /// A section with a tempo of zero means silence - no beats at all.
+        /// </summary>
+        private static List<(double seconds, double bpm, double trust)> PlayTempoSections(
+            (double fromSeconds, double bpm)[] sections,
+            double totalSeconds)
         {
-            // Proof that holding on is wired up and doing something, rather than
-            // being decoration.
+            var estimator = new TempoEstimator();
+            var samples = new List<(double, double, double)>();
+
+            const double tick = 0.01;
+            double nextBeatAt = 0.0;
+
+            for (double now = 0.0; now <= totalSeconds; now += tick)
+            {
+                // Whichever section is in force at this moment.
+                double bpm = 0.0;
+
+                foreach ((double fromSeconds, double sectionBpm) in sections)
+                {
+                    if (now >= fromSeconds)
+                    {
+                        bpm = sectionBpm;
+                    }
+                }
+
+                if (bpm > 0.0)
+                {
+                    if (now >= nextBeatAt)
+                    {
+                        estimator.AddBeat(now);
+                        nextBeatAt = now + (60.0 / bpm);
+                    }
+                }
+                else
+                {
+                    // Nothing playing, so the next beat is whenever sound
+                    // returns rather than on the old schedule.
+                    nextBeatAt = now;
+                }
+
+                estimator.Update(now);
+                samples.Add((now, estimator.Bpm, estimator.Trust));
+            }
+
+            return samples;
+        }
+
+        /// <summary>
+        /// When the reported tempo first settled near a given value, or -1.
+        /// </summary>
+        private static double FirstReached(
+            List<(double seconds, double bpm, double trust)> run, double bpm)
+        {
+            foreach ((double seconds, double reported, double _) in run)
+            {
+                if (Math.Abs(reported - bpm) <= bpm * 0.03)
+                {
+                    return seconds;
+                }
+            }
+
+            return -1.0;
+        }
+
+        [Fact]
+        public void TrustIsEarnedByBeingConfirmedAndLostWhenTheMusicStops()
+        {
+            // Thirty seconds of steady beats, then fifteen of silence.
+            var run = PlayTempoSections(
+                new[] { (0.0, 120.0), (30.0, 0.0) },
+                totalSeconds: 45.0);
+
+            double afterAgreeing = run[(int)(29.0 / 0.01)].trust;
+            double afterSilence = run[^1].trust;
+
+            Assert.True(
+                afterAgreeing > 0.9,
+                $"Thirty seconds of agreement only earned {afterAgreeing:F2} trust.");
+
+            Assert.True(
+                afterSilence < 0.1,
+                $"Fifteen seconds of silence left {afterSilence:F2} trust still standing.");
+        }
+
+        [Fact]
+        public void ASettledTempoTakesLongerToShiftThanAFreshOne()
+        {
+            // THE POINT OF THE WHOLE MECHANISM.
             //
-            // This is deliberately tested by turning the hold UP rather than
-            // off. Turning it off changes nothing measurable - the scoring
-            // already refuses to be moved by a busy passage on its own, which
-            // was worth finding out and is recorded on SecondsToOverturn. So the
-            // only honest way to show the mechanism works is to demand a hold
-            // longer than the test material, and check that a change which
-            // normally would be taken is refused.
-            var estimator = new TempoEstimator { SecondsToOverturn = 60.0 };
+            // The same change of tempo, once against a tempo that has only just
+            // been adopted and once against one that has held for half a minute.
+            // The settled one must put up more of a fight.
+            var fresh = PlayTempoSections(
+                new[] { (0.0, 120.0), (6.0, 150.0) },
+                totalSeconds: 40.0);
 
-            double time = 0.0;
+            var settled = PlayTempoSections(
+                new[] { (0.0, 120.0), (35.0, 150.0) },
+                totalSeconds: 70.0);
 
-            for (int i = 0; i < 16; i++)
-            {
-                estimator.AddBeat(time);
-                time += 0.5;
-            }
+            double freshSwitchedAt = FirstReached(fresh, 150.0) - 6.0;
+            double settledSwitchedAt = FirstReached(settled, 150.0) - 35.0;
 
-            // Exactly the material that moves the estimate to 150 when the hold
-            // is at its normal three seconds.
-            for (int i = 0; i < 40; i++)
-            {
-                estimator.AddBeat(time);
-                time += 0.4;
-            }
+            Assert.True(freshSwitchedAt > 0, "The fresh tempo never switched at all.");
+            Assert.True(settledSwitchedAt > 0, "The settled tempo never switched at all.");
 
-            Assert.InRange(estimator.Bpm, 118.0, 122.0);
+            Assert.True(
+                settledSwitchedAt > freshSwitchedAt,
+                $"A settled tempo gave way in {settledSwitchedAt:F1}s against " +
+                $"{freshSwitchedAt:F1}s for a fresh one - trust is not doing anything.");
+        }
+
+        [Fact]
+        public void ATrackChangeIsAlwaysAdoptedEventually()
+        {
+            // THE OTHER HALF, AND THE REASON TRUST DECAYS RATHER THAN ONLY
+            // ACCUMULATING.
+            //
+            // Trust that only ever grew would be a trap: a long song would build
+            // a position nothing could dislodge and the next track would never
+            // get a look in. Because it erodes while the evidence is against it,
+            // how long a switch takes is set by the decay rate and NOT by how
+            // long the previous tempo had been running.
+            //
+            // Two minutes of 120 is six times as long as the thirty seconds in
+            // the test above, and must not take six times as long to give way.
+            var run = PlayTempoSections(
+                new[] { (0.0, 120.0), (120.0, 150.0) },
+                totalSeconds: 145.0);
+
+            double switchedAfter = FirstReached(run, 150.0) - 120.0;
+
+            Assert.True(
+                switchedAfter > 0,
+                "Two minutes of 120 BPM became immovable, which is the trap this " +
+                "mechanism exists to avoid.");
+
+            Assert.True(
+                switchedAfter < 15.0,
+                $"The new track took {switchedAfter:F1}s to be picked up, which is " +
+                "long enough to be noticed as the wall fighting the music.");
+        }
+
+        [Fact]
+        public void ABriefWobbleDoesNotShiftASettledTempo()
+        {
+            // Two seconds of a different tempo in the middle of a settled track -
+            // shorter than any real section - must leave the estimate alone.
+            var run = PlayTempoSections(
+                new[] { (0.0, 120.0), (35.0, 150.0), (37.0, 120.0) },
+                totalSeconds: 50.0);
+
+            Assert.InRange(run[^1].bpm, 116.0, 124.0);
         }
 
         [Fact]

@@ -147,42 +147,118 @@ namespace LightWall.Core.Audio
 
         /// <summary>
         /// How much better a new tempo has to score than the settled one before
-        /// it is treated as a serious challenger.
+        /// it is treated as a serious challenger, when nothing is yet trusted.
         /// </summary>
-        private const double ChallengeMargin = 1.25;
+        private const double ChallengeMarginWhenNew = 1.15;
 
         /// <summary>
-        /// How long a challenger has to keep winning before the estimate moves.
+        /// The same, once the settled tempo has earned full trust.
+        /// </summary>
+        private const double ChallengeMarginWhenTrusted = 1.5;
+
+        /// <summary>
+        /// How long a challenger must keep winning to overturn a tempo nothing
+        /// is yet invested in, in seconds.
+        /// </summary>
+        private const double SecondsToOverturnWhenNew = 2.0;
+
+        /// <summary>
+        /// How long confident agreement takes to build full trust, in seconds.
         ///
-        /// A new track at a different speed produces a challenger that wins
-        /// continuously, and after a few seconds it takes over. A passing wobble
-        /// does not last long enough to.
+        /// Roughly the length of a verse. Long enough that a tempo has to have
+        /// genuinely settled, short enough to be established well before the
+        /// first break arrives.
+        /// </summary>
+        private const double TrustBuildSeconds = 20.0;
+
+        /// <summary>
+        /// How long sustained disagreement takes to erode full trust, in
+        /// seconds.
         ///
-        /// HOW MUCH THIS IS ACTUALLY DOING - MEASURED, NOT ASSUMED
+        /// THIS NUMBER IS WHAT MAKES TRACK CHANGES WORK.
         ///
-        /// This was added expecting it to be what kept a busy chorus from
-        /// dragging the tempo around. It is not, and it is worth being straight
-        /// about that rather than leaving a comment claiming credit.
+        /// Trust that only ever accumulated would be a trap: a four minute song
+        /// would build a position nothing could dislodge, and the next track
+        /// would never get a look in.
         ///
-        /// Running the messy-chorus test with this set to zero - meaning any
+        /// A break and a new song differ in exactly one way that can be measured
+        /// - how LONG the disagreement lasts. A break runs ten to thirty seconds
+        /// and then the drums come back. A new song disagrees forever. So trust
+        /// erodes while the evidence is against it, and the consequence is the
+        /// important part: how long a switch takes at a track boundary is set by
+        /// this number, NOT by how long the previous song ran. A tempo held for
+        /// four minutes and one held for forty seconds give way at the same
+        /// pace once the evidence genuinely turns.
+        ///
+        /// Eight seconds is comfortably longer than a break but short enough
+        /// that a new track is picked up within a few seconds - and faster than
+        /// that when the change comes with a gap, since silence erodes trust too.
+        /// </summary>
+        private const double TrustDecaySeconds = 8.0;
+
+        /// <summary>
+        /// The largest step trust will take in one update, in seconds.
+        ///
+        /// A stall - a debugger pause, a laptop waking up - would otherwise
+        /// arrive as one enormous gap and wipe out or fill up trust in a single
+        /// step. Everything else in the project that integrates over time caps
+        /// its steps for the same reason.
+        /// </summary>
+        private const double LargestTrustStepSeconds = 0.25;
+
+        /// <summary>How much the settled tempo has earned, from 0 to 1.</summary>
+        private double _trust;
+
+        /// <summary>When trust was last moved on.</summary>
+        private double _lastTrustSeconds;
+
+        /// <summary>
+        /// Whether a rival is currently out-scoring the settled tempo by enough
+        /// to be taken seriously.
+        /// </summary>
+        private bool _challengerLeading;
+
+        /// <summary>
+        /// How long a challenger has to keep winning to overturn a tempo that
+        /// has earned FULL trust, in seconds.
+        ///
+        /// A tempo just adopted gives way in SecondsToOverturnWhenNew; one that
+        /// has held confidently for a verse demands this instead, and everything
+        /// between scales in proportion. See Trust.
+        ///
+        /// Note this is a ceiling rather than a fixed wait. Trust erodes while a
+        /// challenger is leading, so the requirement is falling the whole time
+        /// the challenge is being mounted - which is what stops a long-settled
+        /// tempo becoming immovable.
+        ///
+        /// HOW MUCH THE HOLD IS ACTUALLY DOING - MEASURED, NOT ASSUMED
+        ///
+        /// Worth keeping from when this was a plain fixed wait. It was added
+        /// expecting it to be what kept a busy chorus from dragging the tempo
+        /// around. It is not.
+        ///
+        /// Running the messy-chorus test with the hold at zero - meaning any
         /// challenger takes over the instant it wins - still gives 120.5 BPM
         /// against a true 120. The scoring does that work on its own, because a
-        /// chorus still contains the original beat and no rival tempo ever gets
-        /// far enough ahead to challenge in the first place.
+        /// chorus still contains the original beat and no rival ever gets far
+        /// enough ahead to challenge in the first place.
         ///
-        /// What this does do is hold the line when the scoring genuinely cannot
-        /// settle the matter: a chorus that moves to a half-time or double-time
-        /// feel, or a passage where a triplet layer briefly outweighs the beat.
-        /// The mechanism is proven to work by turning it up rather than off - at
-        /// sixty seconds a real change from 120 to 150 is correctly refused,
-        /// which is what ARealTempoChangeIsRefusedWhileTheHoldIsLongEnough
-        /// checks.
-        ///
-        /// So: a second line of defence that is known to function, not the fix.
-        /// If it ever looks like it is causing trouble, the scoring is what to
-        /// look at first.
+        /// What the hold does do is cover the cases the scoring cannot settle: a
+        /// section that moves to a half-time or double-time feel, or one where a
+        /// triplet layer briefly outweighs the beat. Those are exactly the cases
+        /// trust weighting is meant to strengthen.
         /// </summary>
-        public double SecondsToOverturn { get; set; } = 3.0;
+        public double SecondsToOverturn { get; set; } = 8.0;
+
+        /// <summary>
+        /// How much the settled tempo has earned, from 0 to 1.
+        ///
+        /// Grows while beats keep confirming it and erodes while they do not.
+        /// Exposed because it explains behaviour that otherwise looks arbitrary -
+        /// why the same challenge is refused in one passage and accepted in
+        /// another - and because tests need to be able to see it.
+        /// </summary>
+        public double Trust => _trust;
 
         /// <summary>When each remembered sound happened.</summary>
         private readonly List<double> _onsetTimes = new();
@@ -312,6 +388,9 @@ namespace LightWall.Core.Audio
             _challengerBpm = 0.0;
             _challengerSinceSeconds = 0.0;
             _lastOnsetSeconds = 0.0;
+            _trust = 0.0;
+            _lastTrustSeconds = 0.0;
+            _challengerLeading = false;
         }
 
         /// <summary>
@@ -331,10 +410,17 @@ namespace LightWall.Core.Audio
         {
             if (_onsetTimes.Count == 0)
             {
+                _trust = 0.0;
+                _lastTrustSeconds = nowSeconds;
                 return;
             }
 
             double quietFor = nowSeconds - _onsetTimes[^1];
+
+            // Before the early exits below, so trust keeps moving in every
+            // passage rather than only in the ones that reach the end of this
+            // method.
+            UpdateTrust(nowSeconds, quietFor);
 
             if (quietFor > ForgetAfterSeconds)
             {
@@ -353,6 +439,60 @@ namespace LightWall.Core.Audio
             double fade = 1.0 - ((quietFor - ConfidenceHoldSeconds) / ConfidenceFadeSeconds);
 
             Confidence = _measuredConfidence * Math.Clamp(fade, 0.0, 1.0);
+        }
+
+        /// <summary>
+        /// Moves trust in whichever direction the evidence points.
+        ///
+        /// Trust grows while beats keep confirming the settled tempo, and erodes
+        /// while they do not - either because a rival is out-scoring it, or
+        /// because there is nothing being heard at all.
+        ///
+        /// WHY SILENCE COUNTS AGAINST IT
+        ///
+        /// This looks harsh on a quiet break, and costs nothing there. A quiet
+        /// passage produces no challenger, so there is nobody to hand over to
+        /// however low trust falls - and the tempo itself is held for thirty
+        /// seconds regardless. When the drums come back at the same speed, trust
+        /// simply rebuilds.
+        ///
+        /// What it buys is track changes. Most transitions carry a gap or a hard
+        /// cut, and a couple of seconds of silence knocking trust down means the
+        /// next track is picked up quickly instead of fighting the last one.
+        ///
+        /// Growth is scaled by confidence, so a tempo agreed on by nearly every
+        /// recent sound earns its position faster than one scraping along on
+        /// half of them. Erosion is not scaled: once the evidence has turned,
+        /// how good the answer used to look stops being the point.
+        /// </summary>
+        private void UpdateTrust(double nowSeconds, double quietFor)
+        {
+            double elapsed = Math.Min(nowSeconds - _lastTrustSeconds, LargestTrustStepSeconds);
+            _lastTrustSeconds = nowSeconds;
+
+            if (elapsed <= 0.0)
+            {
+                return;
+            }
+
+            if (Bpm <= 0.0)
+            {
+                _trust = 0.0;
+                return;
+            }
+
+            bool losingGround = _challengerLeading || quietFor > ConfidenceHoldSeconds;
+
+            if (losingGround)
+            {
+                _trust -= elapsed / TrustDecaySeconds;
+            }
+            else
+            {
+                _trust += elapsed * _measuredConfidence / TrustBuildSeconds;
+            }
+
+            _trust = Math.Clamp(_trust, 0.0, 1.0);
         }
 
         /// <summary>
@@ -555,6 +695,7 @@ namespace LightWall.Core.Audio
             {
                 Bpm = measuredBpm;
                 _challengerBpm = 0.0;
+                _challengerLeading = false;
                 return;
             }
 
@@ -567,20 +708,42 @@ namespace LightWall.Core.Audio
                 // instead of twitching by a fraction of a BPM every beat.
                 Bpm += (measuredBpm - Bpm) * 0.25;
                 _challengerBpm = 0.0;
+                _challengerLeading = false;
                 return;
             }
 
             // Something different is being measured. Is it beating the settled
             // answer by enough to be taken seriously?
+            //
+            // HOW MUCH IS ENOUGH DEPENDS ON WHAT THE SETTLED ANSWER HAS EARNED
+            //
+            // A tempo adopted four seconds ago and one that has held confidently
+            // for a whole verse used to be defended identically, which is why a
+            // break could shove the estimate around so easily. Both the margin a
+            // challenger must clear and the time it must hold now scale with
+            // trust.
+            //
+            // The ceiling matters as much as the scaling. Trust erodes while a
+            // challenger leads, so these requirements are falling the whole time
+            // a challenge is being mounted - a long-settled tempo is harder to
+            // shift, never impossible. That is what keeps track changes working.
+            double margin = ChallengeMarginWhenNew +
+                (_trust * (ChallengeMarginWhenTrusted - ChallengeMarginWhenNew));
+
             double settledScore = ScoreTempo(60.0 / Bpm);
             double measuredScore = ScoreTempo(60.0 / measuredBpm);
 
-            if (measuredScore < settledScore * ChallengeMargin)
+            if (measuredScore < settledScore * margin)
             {
                 // Not convincing. Stay put and forget it.
                 _challengerBpm = 0.0;
+                _challengerLeading = false;
                 return;
             }
+
+            // Something credible is leading, so the settled tempo starts losing
+            // ground whether or not this particular challenger ever wins.
+            _challengerLeading = true;
 
             bool sameChallengerAsLastTime =
                 _challengerBpm > 0.0 &&
@@ -594,10 +757,22 @@ namespace LightWall.Core.Audio
                 return;
             }
 
-            if (_lastOnsetSeconds - _challengerSinceSeconds >= SecondsToOverturn)
+            // How long this challenger has to hold on, scaled by what it is up
+            // against. Recomputed every time rather than fixed when the
+            // challenge started, so the falling trust shortens the wait as the
+            // challenge goes on.
+            double requiredHold = SecondsToOverturnWhenNew +
+                (_trust * (SecondsToOverturn - SecondsToOverturnWhenNew));
+
+            if (_lastOnsetSeconds - _challengerSinceSeconds >= requiredHold)
             {
                 Bpm = measuredBpm;
                 _challengerBpm = 0.0;
+                _challengerLeading = false;
+
+                // A tempo just adopted has earned nothing yet, and must prove
+                // itself the same way the last one did.
+                _trust = 0.0;
             }
         }
 

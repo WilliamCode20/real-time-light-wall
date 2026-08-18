@@ -73,13 +73,27 @@ collapses with everything else.
 
 Three fixes, in value order:
 
-1. **Trust-weighted inertia.** Scale the switching margin by how long and how
-   confidently the incumbent has held. Two minutes of agreement should demand
-   overwhelming evidence; four seconds should be cheap to overturn. Smallest
-   change, targets "gets confused quickly" directly.
+1. ~~**Trust-weighted inertia.**~~ **Done.** The switching margin and hold now
+   scale with how long and how confidently the incumbent has held, and trust
+   erodes while the evidence is against it so track changes still work. A fresh
+   tempo folds in ~5 s, a settled one in ~10 s, and that ~10 s does not grow with
+   song length. See CURRENT_STATUS for the measured figures.
+
+   **It bought about ten seconds of resistance, which is the honest limit.**
+   Resistance to breaks and speed of track changes are the same number pulling
+   opposite ways. Ten seconds covers a short break and will not survive a long
+   one at a genuinely different tempo — which is what makes the next item matter
+   more than it looked before this was built.
+
 2. **Octave awareness.** Breaks routinely halve the rhythmic density. If the best
    challenger sits near 2× or ½× the incumbent, that is the same tempo counted
    differently, not a rival — treat it as agreement rather than switching.
+
+   This is now the highest-value remaining change, because it does not trade
+   break resistance against track-change speed the way trust does. It removes the
+   commonest break challenger *entirely* rather than making it work harder, so it
+   improves one without costing the other.
+
 3. **Band-aware onsets** (see below), so the estimator can tell "the drum went
    away" from "the drum changed".
 

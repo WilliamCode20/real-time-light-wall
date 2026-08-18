@@ -374,11 +374,50 @@ genuinely are not on the beat, and the tempo underneath is still right. Worth
 having because a confident wrong answer and an unconfident one look identical
 without it.
 
-Once settled, the estimate also **resists being moved**. A rival tempo has to win
-by a clear margin and keep winning for three seconds before it takes over — long
-enough that a passing wobble cannot do it, short enough that the next track is
-picked up quickly. It is deliberately not permanent: nothing here knows where one
-song ends and the next begins.
+#### Trust — how hard a settled tempo is to shift
+
+Once settled, the estimate **resists being moved**, and how hard depends on what
+it has earned. A rival has to beat it by a margin and keep winning for a while;
+both requirements scale with **trust**, a 0–1 measure that grows while beats keep
+confirming the tempo and erodes while they do not.
+
+This replaced a fixed margin and a fixed three-second hold, which defended a
+tempo adopted four seconds ago exactly as hard as one that had held confidently
+for a whole verse. That is why a break could shove the estimate around so easily:
+the incumbent was re-judged purely on recent evidence with no memory of how well
+established it was.
+
+**Trust erodes as well as builds, and that is the load-bearing part.** Trust that
+only accumulated would be a trap — a four-minute song would build a position
+nothing could dislodge and the next track would never get a look in. Because it
+decays while the evidence is against it, *how long a switch takes is set by the
+decay rate, not by how long the previous tempo ran*. Measured:
+
+| 120 BPM held for | Trust at the change | 150 BPM adopted after |
+|---|---|---|
+| 3 s | 0.05 | 4.9 s |
+| 12 s | 0.50 | 7.9 s |
+| 30 s | 1.00 | 10.1 s |
+| 60 s | 1.00 | 9.6 s |
+| 120 s | 1.00 | 9.2 s |
+
+Trust saturates, so half a minute and two minutes give way at the same pace. A
+freshly adopted tempo folds in about five seconds, a settled one in about ten —
+trust roughly doubles the resistance without ever making it permanent.
+
+**Silence counts against trust too.** It looks harsh on a quiet break and costs
+nothing there: a quiet passage produces no challenger, so there is nobody to hand
+over to however low trust falls, and the tempo itself is held for 30 s regardless.
+What it buys is track changes, which usually carry a gap. Measured with a three
+second gap, a new track is picked up in 7.0 s rather than ~10.
+
+**The honest limit.** Resistance to breaks and speed of track changes are the
+same number pulling in opposite directions — about ten seconds of each. That
+covers short breaks and is not enough for a long one at a genuinely different
+tempo. The way out is not to tune this trade but to stop the commonest break from
+producing a challenger at all, which is what octave awareness is for: most breaks
+move to half or double time, and those are the same tempo counted differently
+rather than a rival. See `NEXT_STEPS`.
 
 #### The version before this, and how it failed
 
