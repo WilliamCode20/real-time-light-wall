@@ -6,7 +6,7 @@ The full chain works end to end: **music → capture → analysis → engine →
 → firmware → real bulbs.** The hardware mapping was verified against the physical
 wall on 2026-08-04.
 
-The solution builds clean with 297 passing tests.
+The solution builds clean with 382 passing tests.
 
 ### Core wall model
 
@@ -33,11 +33,9 @@ Switch, Fill Horizontal, Fill Vertical
 map can be checked against the relay labels.
 
 All 25 are registered in `EffectCatalog`, and the window builds its buttons from
-that list. Adding an effect is a one-entry change.
-
-One gap: `Diagnostics` is a separate list in the catalog, but the window still
-renders it inline with the procedural animations rather than under its own
-heading.
+that list. Adding an effect is a one-entry change, plus two optional declarations
+on the effect itself — `ReactsToAudio` and `Controls` — which decide the tab it
+appears on and which sliders show while it plays.
 
 ### Playback engine
 
@@ -49,13 +47,22 @@ animations leap.
 
 ### Animation controls
 
+Always shown, because the engine applies them to whatever is playing:
+
 - Speed (10%–300%)
 - Center X (-3 to +3)
 - Center Y (-2 to +2)
-- Meteor Tail Length (1–5)
 
-All apply live, mid-animation. The Center offsets now affect static patterns as
-well as animations, which was previously inconsistent.
+Shown only while an effect that reads them is playing:
+
+- Meteor Tail (1–5) — Meteor alone
+- Bursts on — detected beats or the tempo metronome; every beat-driven effect
+  except Beat Flash and Tempo Pulse, which are each pinned to one source
+- Fill and clear — one step per beat, or a whole sweep per beat; the two Fill
+  and Clear effects
+
+All apply live, mid-animation. The Center offsets affect static patterns as well
+as animations, which was previously inconsistent.
 
 ### Simulator UI
 
@@ -1001,7 +1008,7 @@ bulb count for the current frame.
 
 ### Tests
 
-297 tests covering the wall model, the exact byte layout of the protocol,
+382 tests covering the wall model, the exact byte layout of the protocol,
 round-trip packing, effect repeatability, engine behaviour, the receiver's
 stream handling under deliberately injected faults, the output pipeline end to
 end, and the whole audio chain — loudness, automatic gain, frequency bands,

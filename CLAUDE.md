@@ -33,6 +33,72 @@ The repository owner is new to C#, .NET and WPF. That shapes how to work here:
   them, and add to them.
 - Commits are granular, one layer each, with a full explanation in the body.
 
+## Practices learned the hard way
+
+Each of these cost real time to discover. A fresh session that skips them will
+rediscover them the same way.
+
+### Measure before building, especially when the plan sounds obvious
+
+Twice this repo has had a fix designed, agreed and nearly built for a problem
+that did not exist.
+
+The clearest: octave awareness was planned as the top-priority tempo fix, on the
+reasoning that breaks halving the beat get read as a new tempo. Twenty minutes of
+measurement showed **half-time and double-time breaks already held a rock-steady
+120** — the reportable range plus the low-multiple preference covered them. What
+was actually broken was three-to-two (triplet and dotted feels), which nobody had
+considered, and a sparse break zeroing the tempo outright, which nobody had
+looked for.
+
+If a change is about audio behaviour, get numbers first.
+
+### How to measure: the throwaway probe
+
+The pattern used throughout, and the reason so many comments here quote figures:
+
+1. Write a temporary xUnit test that drives the real class over a synthetic
+   signal and builds a `StringBuilder` report.
+2. End it with `Assert.Fail(report.ToString())`.
+3. Run with `--filter "FullyQualifiedName~TempWhateverProbe"` and read the output.
+4. **Delete the probe** and, if the finding is worth keeping, write a real test
+   asserting it.
+
+It gives a table of real numbers in about two minutes. Several probes here swept
+a setting across three synthetic tracks of different dynamics, which is what
+turned "the slider needs moving per song" into an actual threshold design.
+
+### Screenshots of the app need `SetProcessDPIAware()`
+
+**This wasted a lot of time and produced a confidently wrong bug report.**
+
+This machine runs a 2560×1600 screen at 150%. A capture process that has not
+called `SetProcessDPIAware()` sees virtualised coordinates (1707×1067) while
+`CopyFromScreen` grabs *raw physical* pixels — so every screenshot is silently
+cropped to the left ~67% of the window, with no visual sign anything is missing.
+
+That produced a firm report that the wall display was clipped and mis-positioned.
+It was not; the right third of the window was simply never captured. Always call
+`SetProcessDPIAware()` before capturing, and sanity-check the window size — the
+maximised window is about **2582×1622**, not 1721×1081.
+
+When layout numbers matter, prefer measuring from inside the app (temporarily
+writing `ActualWidth` into the window `Title` and reading it back) over trusting
+a screenshot.
+
+### Close the app before building
+
+`dotnet build` fails with file-lock errors if the simulator is still running.
+`taskkill //IM LightWall.App.exe //F` first. The test project builds fine either
+way, so tests can be iterated on while it runs.
+
+### Verify by running it, not only by passing tests
+
+Two real bugs this session were invisible to a green suite: the trigger meter
+pinned at full because an unclamped value took seconds to drain, and the
+breathing surface reading as a growing block rather than something breathing.
+Both were obvious within five seconds of looking at the wall.
+
 ## Commands
 
 ```bash
@@ -60,7 +126,10 @@ dotnet publish "desktop-app/LightWallController/LightWall.App" -p:PublishProfile
 | `LightWall.Core` | `net10.0` | Wall model, effects, engine, clock, transport, packet format, virtual wall, **all audio analysis**. No UI, no platform dependencies. |
 | `LightWall.App` | `net10.0-windows` | WPF simulator window. The only project that knows about WPF. |
 | `LightWall.IO` | `net10.0-windows` | Real hardware and system I/O: `SerialTransport`, `SystemAudioCapture`. Windows-specific because WASAPI is. |
-| `LightWall.Tests` | `net10.0-windows` | xUnit tests. **294 of them.** Windows-targeted only because it references IO. |
+| `LightWall.Tests` | `net10.0-windows` | xUnit tests. **382 of them.** Windows-targeted only because it references IO. |
+
+**25 effects** live in `EffectCatalog`: 9 static patterns, 3 pre-set animations,
+12 procedural, 1 diagnostic. Ten of the procedural ones react to audio.
 
 Shared build settings live in
 `desktop-app/LightWallController/Directory.Build.props`.
@@ -187,8 +256,8 @@ SystemAudioCapture (IO, WASAPI loopback)
                 --> AudioLevelTracker    fast attack / slow release
                 --> AudioGainController  volume independence, noise gate
                 --> SpectrumAnalyser     FFT into 7 bands, one per column
-                --> OnsetDetector        spectral flux, moving threshold
-                --> TempoEstimator       scores every candidate tempo
+                --> OnsetDetector        spectral flux, typical-plus-spread
+                --> TempoEstimator       scores candidate tempos, holds on trust
                 --> BeatClock            metronome locked to that tempo
         --> AudioFeatures (immutable snapshot)
                 --> WallShowClock --> WallEngine --> EffectContext --> effects
@@ -231,6 +300,35 @@ Non-obvious decisions worth not undoing:
 - **Confidence means "what share of recent sounds land on the beat"**, not
   "what fraction of gaps agree". The old meaning stopped applying once pairs
   several beats apart were being considered.
+- **A settled tempo resists being moved, in proportion to `Trust`.** Trust grows
+  while beats confirm it (and only when confidence ≥ 0.5, so a mediocre answer
+  cannot creep to full trust just by lasting) and **erodes** while a rival leads
+  or the music goes quiet. The erosion is the load-bearing half: trust that only
+  accumulated would make a long song immovable and the next track unreachable.
+  Because it decays, *time-to-switch is set by the decay rate, not by how long
+  the previous tempo ran* — measured at ~5 s for a fresh tempo and ~10 s for one
+  held 30 s, 60 s or 120 s alike.
+- **A change of feel is not a change of speed.** Readings related to the settled
+  tempo by ×2, ÷2, ×1.5 or ÷1.5 are the same tempo counted differently — a
+  triplet or dotted section, not a new song. They are challengers that must hold
+  **three times** as long (~24 s).
+
+  Two wrong versions of this are recorded in `TempoEstimator`, because both
+  obvious fixes fail in opposite directions. Absorbing them outright lets a wrong
+  multiple defend itself *forever*. Correcting as soon as the alternative fits
+  better flips to the break's tempo, since during a triplet section the wrong
+  reading genuinely does fit better. **What separates the cases is duration, not
+  goodness of fit.**
+- **A thin patch must not wipe a settled tempo.** `Recalculate` used to zero the
+  BPM when too few onsets were in the window, which silently defeated the 30 s
+  hold from the other direction and stopped Tempo Pulse dead in exactly the
+  passage it exists to carry.
+- **`OnsetDetector.AutoSensitivity` targets a plausible detection *rate*, not a
+  correct threshold.** Nothing at that level can tell a beat from a well-timed
+  guitar chord, but it can tell that 8 detections a second is too many and 0.3 is
+  too few. Note `MinimumSecondsBetweenBeats` caps the achievable rate (0.20 s →
+  5/s), so any "too many" bound must sit clearly below that cap or it can never
+  fire.
 
 ## Serial protocol
 
@@ -306,9 +404,12 @@ Do not add these speculatively:
   the user is supposed to give, and lets two effects on screen disagree about
   when the beat was.
 - **Per-effect parameter systems.** `EffectParameters` is one shared object.
-  `MeteorTailLength` and `IdentifyBulbIndex` belong to a single effect each;
-  `BeatSource` is deliberately cross-cutting and would stay shared even after a
-  split. Revisit when several effects have their own controls.
+  `MeteorTailLength`, `IdentifyBulbIndex` and `FillPacing` belong to one effect
+  each; `BeatSource` is deliberately cross-cutting and would stay shared even
+  after a split. Anything added here must also be copied in `Clone()` — a setting
+  missing from it silently reverts to its default and shows up as "it sometimes
+  ignores the switch". Revisit the split when several effects have their own
+  controls; that is where DJ-facing scene control will force the issue.
 - **Brightness or dimming.** The relays are zero-cross SSRs and strictly ON/OFF.
   If it ever became desirable, `SetCell(row, column, bool)` can stay as an
   overload so existing effects keep working.

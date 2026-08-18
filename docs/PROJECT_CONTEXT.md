@@ -29,13 +29,21 @@ The wall should feel more like an architectural lighting feature than a gimmick.
 
 ## Current Development Approach
 
-The project is being built in stages.
+The project was built in stages, and all of the planned ones are done.
 
-The simulator stage is complete: wall-state modeling, a time-driven effect
-engine, 15 effects, live animation controls, and a tested serial packet format.
+- **Simulator** — wall-state modeling, a time-driven effect engine, live
+  animation controls, a tested 9-byte packet format
+- **Serial transport and firmware** — frames leave the app and drive the real
+  wall; the mapping was verified against it on 2026-08-04
+- **Audio** — WASAPI loopback capture, seven frequency bands, onset detection,
+  tempo estimation and a metronome locked to it
 
-The current stage is serial transport — getting frames out of the app and onto
-the physical wall. Audio comes after that.
+There are now **25 effects**, ten of which react to the music.
+
+The current stage is refinement rather than construction: tuning beat detection
+against real music, and then DJ-facing scene control — which is the point at
+which `EffectParameters` will need to stop being one shared object. See
+`NEXT_STEPS.md`.
 
 ## Distribution
 

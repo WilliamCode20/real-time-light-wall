@@ -3,7 +3,7 @@
 ## Where the project stands
 
 The full chain works: **music → capture → analysis → engine → packets → firmware
-→ real bulbs.** The hardware mapping is verified against the physical wall. 294
+→ real bulbs.** The hardware mapping is verified against the physical wall. 382
 tests pass.
 
 Everything below is improvement rather than missing foundation.

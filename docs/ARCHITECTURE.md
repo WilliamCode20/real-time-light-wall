@@ -1,5 +1,11 @@
 # Architecture
 
+> **Where this sits among the docs.** This file describes the shape of the code —
+> what the pieces are and how they fit. `CLAUDE.md` is authoritative for the rules
+> that must not be broken and the practices worth knowing; `CURRENT_STATUS.md` is
+> authoritative for what exists and why each decision was made. Where they
+> disagree with this file, they are right and this one has drifted.
+
 ## High-Level Structure
 
 The desktop app is organized around a small number of core concepts:
@@ -39,22 +45,33 @@ All reusable non-UI logic. Targets plain `net10.0` and references nothing.
 - static pattern drawing routines (`Patterns/`)
 - prepared frame sequences (`Animations/`)
 - the effect system and catalog (`Effects/`)
-- the playback engine (`Engine/`)
+- the playback engine and show clock (`Engine/`)
 - packet serialization (`Serialization/`)
+- transports and the output service (`Transport/`)
+- the software model of the firmware's receiver (`Simulation/`)
+- **all audio analysis** (`Audio/`) — loudness, frequency bands, onset
+  detection, tempo estimation, the metronome
+
+That last one is the least obvious and the most load-bearing: analysis lives here
+rather than in IO precisely so it can be tested against signals whose answers are
+known in advance, with no sound card and nothing playing.
 
 ### `LightWall.IO`
 
-Reserved for hardware and system I/O. **Currently empty.**
+Hardware and system I/O. Targets `net10.0-windows` because WASAPI is
+Windows-specific.
 
-Intended responsibilities:
+- `Serial/SerialTransport` — the real wall, and the DTR-reset settle window
+- `Serial/SerialPortLister` — port enumeration, sorted numerically
+- `Audio/SystemAudioCapture` — WASAPI loopback capture
 
-- serial communication
-- audio input services
-- device enumeration
+Deliberately thin. It asks Windows for buffers and hands them to Core; the
+analysis is not here and must not be moved here.
 
 ### `LightWall.Tests`
 
-xUnit tests covering `LightWall.Core`. Currently 80 tests.
+xUnit tests covering Core and the testable parts of IO. **382 tests.** Windows
+targeted only because it references IO.
 
 ## Core Model: `WallFrame`
 
@@ -155,9 +172,14 @@ WallShowClock            ticks the engine on its own background thread (~120 Hz)
      |
      +--> WallOutputService   samples it (30 Hz), builds packets
                 |
-                +--> LoopbackTransport   software model of the wall
-                +--> SerialTransport     not yet written
+                +--> LoopbackTransport   virtual wall, always attached
+                +--> SerialTransport     the real wall, when a port is connected
 ```
+
+Both are attached at once through `CompositeTransport`. Connecting a port **adds**
+the real wall beside the virtual one rather than replacing it, which is the
+project's most useful diagnostic: if the two agree and the hardware does not, the
+fault is wiring, firmware or a relay.
 
 The important property is that these are three independent rates. The engine
 ticks fast enough to be smooth, the window draws at the monitor's pace, and the

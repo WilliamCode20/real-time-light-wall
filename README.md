@@ -12,18 +12,30 @@ Windows desktop controller and Arduino firmware for a music-reactive 5x7 light w
 
 ## Repository structure
 
-- `CLAUDE.md` — build commands, protocol spec, and architectural rules
+- `CLAUDE.md` — build commands, protocol spec, architectural rules, and the
+  practices worth knowing before changing anything. **Read this first.**
+- `docs/CURRENT_STATUS.md` — what exists and why it works the way it does
+- `docs/NEXT_STEPS.md` — what is left, in order
 - `docs/` — planning notes, hardware notes, and the original Arduino sketch
 - `desktop-app/` — Visual Studio solution and C# desktop application
-- `arduino-firmware/` — Arduino Mega firmware (not yet written)
+- `arduino-firmware/` — Arduino Mega firmware
 
 ## Current status
 
-The desktop simulator works. It has a time-driven effect engine, 15 effects, live
-animation controls, and a tested 9-byte serial packet format. 80 tests pass.
+**The whole chain works**: music → capture → analysis → engine → packets →
+firmware → real bulbs. The hardware mapping was verified against the physical
+wall on 2026-08-04.
 
-Serial transport and the Arduino firmware are the next layer. Audio comes after
-that.
+- Time-driven effect engine with **25 effects**, ten of them audio-reactive
+- Real-time audio analysis: loudness, seven frequency bands, onset detection,
+  tempo estimation and a metronome locked to it
+- A virtual wall decoded from the actual packets, running beside the real one as
+  a permanent diagnostic
+- Tested 9-byte serial protocol and Arduino Mega firmware
+- **382 tests pass**
+
+What remains is refinement rather than missing foundation: tuning beat detection
+against real music, and DJ-facing scene control. See `docs/NEXT_STEPS.md`.
 
 ## Getting started
 
