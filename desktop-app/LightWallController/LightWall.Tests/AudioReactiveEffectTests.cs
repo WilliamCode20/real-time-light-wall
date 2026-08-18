@@ -841,9 +841,10 @@ namespace LightWall.Tests
             double totalSeconds,
             double tempoBpm = 120.0,
             BeatSource source = BeatSource.Detected,
-            bool isAudioActive = true)
+            bool isAudioActive = true,
+            FillPacing pacing = FillPacing.OneStepPerBeat)
         {
-            var parameters = new EffectParameters { BeatSource = source };
+            var parameters = new EffectParameters { BeatSource = source, FillPacing = pacing };
             var frame = new WallFrame();
             var drawn = new List<bool[,]>();
 
@@ -1664,6 +1665,412 @@ namespace LightWall.Tests
             }
 
             Assert.Equal(2, boardsSeen.Count);
+        }
+
+        // ------------------------------------------------------------------
+        // Fill and Clear
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Draws one beat of an effect whose picture depends only on the beat
+        /// number.
+        ///
+        /// Simpler than stepping a timeline, and legitimate only because these
+        /// effects hold no state - the beat number alone decides what is drawn.
+        /// The breathing effects could not be tested this way.
+        /// </summary>
+        private static bool[,] RenderAtBeat(
+            IWallEffect effect,
+            int beatCount,
+            bool isAudioActive = true,
+            BeatSource source = BeatSource.Detected,
+            int? pulseCount = null)
+        {
+            // By default both counters read the same, so a test that only cares
+            // about the picture need not think about which is which. Passing
+            // pulseCount separately drives them apart, which is how the tests
+            // below check that the wrong counter really is ignored.
+            var features = new AudioFeatures(
+                0.5, 0.5, 0.5, 0.5, CreateBands(0.5),
+                isSilent: false,
+                secondsSinceBeat: 0.0,
+                beatCount: beatCount,
+                tempoBpm: 120.0,
+                tempoConfidence: 1.0,
+                secondsSincePulse: 0.0,
+                pulseCount: pulseCount ?? beatCount);
+
+            var frame = new WallFrame();
+
+            effect.Render(
+                new EffectContext(
+                    beatCount * 0.5,
+                    new EffectParameters { BeatSource = source },
+                    7,
+                    features,
+                    isAudioActive),
+                frame);
+
+            var copy = new bool[WallFrame.Rows, WallFrame.Columns];
+
+            for (int row = 0; row < WallFrame.Rows; row++)
+            {
+                for (int column = 0; column < WallFrame.Columns; column++)
+                {
+                    copy[row, column] = frame.GetCell(row, column);
+                }
+            }
+
+            return copy;
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows, 6)]
+        [InlineData(FillAxis.Columns, 8)]
+        public void FillAndClear_RepeatsAfterAWholeCycle(FillAxis axis, int beatsInCycle)
+        {
+            // Five bars need three steps out from the middle and seven need four,
+            // and filling then emptying uses each step twice - so six beats and
+            // eight beats respectively.
+            var effect = new FillAndClearEffect(axis);
+
+            for (int beat = 0; beat < beatsInCycle; beat++)
+            {
+                bool[,] first = RenderAtBeat(effect, beat);
+                bool[,] later = RenderAtBeat(effect, beat + beatsInCycle);
+
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    for (int column = 0; column < WallFrame.Columns; column++)
+                    {
+                        Assert.Equal(first[row, column], later[row, column]);
+                    }
+                }
+            }
+
+            // And it must NOT repeat sooner than that, or the cycle is shorter
+            // than intended and half the animation is missing.
+            bool[,] atStart = RenderAtBeat(effect, 0);
+            bool[,] halfWay = RenderAtBeat(effect, beatsInCycle / 2);
+
+            Assert.NotEqual(LitCells(atStart), LitCells(halfWay));
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows, 6)]
+        [InlineData(FillAxis.Columns, 8)]
+        public void FillAndClear_FillsSteadilyThenEmptiesSteadily(FillAxis axis, int beatsInCycle)
+        {
+            var effect = new FillAndClearEffect(axis);
+
+            int halfCycle = beatsInCycle / 2;
+
+            // Filling: strictly more lit on each beat, ending with the whole wall.
+            for (int beat = 1; beat < halfCycle; beat++)
+            {
+                int before = LitCells(RenderAtBeat(effect, beat - 1));
+                int now = LitCells(RenderAtBeat(effect, beat));
+
+                Assert.True(now > before, $"Beat {beat} did not add anything while filling.");
+            }
+
+            Assert.Equal(
+                WallFrame.Rows * WallFrame.Columns,
+                LitCells(RenderAtBeat(effect, halfCycle - 1)));
+
+            // Emptying: strictly less on each beat, ending dark.
+            for (int beat = halfCycle; beat < beatsInCycle; beat++)
+            {
+                int before = LitCells(RenderAtBeat(effect, beat - 1));
+                int now = LitCells(RenderAtBeat(effect, beat));
+
+                Assert.True(now < before, $"Beat {beat} did not remove anything while emptying.");
+            }
+
+            Assert.Equal(0, LitCells(RenderAtBeat(effect, beatsInCycle - 1)));
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows, 6)]
+        [InlineData(FillAxis.Columns, 8)]
+        public void FillAndClear_EmptiesFromTheMiddleOutwardRatherThanDraining(
+            FillAxis axis, int beatsInCycle)
+        {
+            // The detail that gives the effect its shape. The emptying spreads
+            // outward exactly as the filling did, so what grows is a HOLE in the
+            // middle - not a wall draining inward from its edges.
+            var effect = new FillAndClearEffect(axis);
+
+            bool[,] firstStepOfEmptying = RenderAtBeat(effect, beatsInCycle / 2);
+
+            int middleRow = WallFrame.Rows / 2;
+            int middleColumn = WallFrame.Columns / 2;
+
+            Assert.False(
+                firstStepOfEmptying[middleRow, middleColumn],
+                "The middle is still lit on the first step of emptying, so it is " +
+                "draining from the edges instead of hollowing out.");
+
+            Assert.True(
+                firstStepOfEmptying[0, 0],
+                "The corner has gone dark on the first step of emptying, so it is " +
+                "draining from the edges instead of hollowing out.");
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows)]
+        [InlineData(FillAxis.Columns)]
+        public void FillAndClear_IsAlwaysSymmetricalAboutTheMiddle(FillAxis axis)
+        {
+            // True at every step of the cycle, filling or emptying.
+            var effect = new FillAndClearEffect(axis);
+
+            for (int beat = 0; beat < 16; beat++)
+            {
+                bool[,] drawn = RenderAtBeat(effect, beat);
+
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    for (int column = 0; column < WallFrame.Columns; column++)
+                    {
+                        Assert.Equal(
+                            drawn[row, column],
+                            drawn[WallFrame.Rows - 1 - row, WallFrame.Columns - 1 - column]);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void FillAndClear_DrawsWholeBarsInTheDirectionItWasBuiltFor()
+        {
+            // The horizontal version must never light part of a row, and the
+            // vertical version never part of a column. A version that leaked
+            // across its own axis would still pass the counting tests above.
+            for (int beat = 0; beat < 16; beat++)
+            {
+                bool[,] horizontal = RenderAtBeat(new FillAndClearEffect(FillAxis.Rows), beat);
+
+                for (int row = 0; row < WallFrame.Rows; row++)
+                {
+                    for (int column = 1; column < WallFrame.Columns; column++)
+                    {
+                        Assert.Equal(horizontal[row, 0], horizontal[row, column]);
+                    }
+                }
+
+                bool[,] vertical = RenderAtBeat(new FillAndClearEffect(FillAxis.Columns), beat);
+
+                for (int column = 0; column < WallFrame.Columns; column++)
+                {
+                    for (int row = 1; row < WallFrame.Rows; row++)
+                    {
+                        Assert.Equal(vertical[0, column], vertical[row, column]);
+                    }
+                }
+            }
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows)]
+        [InlineData(FillAxis.Columns)]
+        public void FillAndClear_RestsOnASingleBarWhenNobodyIsListening(FillAxis axis)
+        {
+            var effect = new FillAndClearEffect(axis);
+
+            // Whatever the beat counter says, nothing listening means the first
+            // step and no movement.
+            foreach (int beat in new[] { 0, 3, 7 })
+            {
+                bool[,] drawn = RenderAtBeat(effect, beat, isAudioActive: false);
+
+                int expected = axis == FillAxis.Rows ? WallFrame.Columns : WallFrame.Rows;
+
+                Assert.Equal(expected, LitCells(drawn));
+            }
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows)]
+        [InlineData(FillAxis.Columns)]
+        public void FillAndClear_FollowsTheChosenBeatSource(FillAxis axis)
+        {
+            var effect = new FillAndClearEffect(axis);
+
+            int atRest = LitCells(RenderAtBeat(effect, 0));
+
+            // Detected beats piling up while the metronome stays silent. Set to
+            // follow the metronome, the wall must not move at all.
+            for (int beat = 1; beat < 6; beat++)
+            {
+                bool[,] drawn = RenderAtBeat(
+                    effect, beat, source: BeatSource.Tempo, pulseCount: 0);
+
+                Assert.Equal(atRest, LitCells(drawn));
+            }
+
+            // The mirror image: the metronome striking while nothing is being
+            // heard. Set to follow detected beats, the wall must still not move.
+            for (int pulse = 1; pulse < 6; pulse++)
+            {
+                bool[,] drawn = RenderAtBeat(
+                    effect, 0, source: BeatSource.Detected, pulseCount: pulse);
+
+                Assert.Equal(atRest, LitCells(drawn));
+            }
+
+            // And each setting does follow its own counter.
+            Assert.NotEqual(
+                atRest,
+                LitCells(RenderAtBeat(effect, 2, source: BeatSource.Detected, pulseCount: 0)));
+
+            Assert.NotEqual(
+                atRest,
+                LitCells(RenderAtBeat(effect, 0, source: BeatSource.Tempo, pulseCount: 2)));
+        }
+
+        // ------------------------------------------------------------------
+        // Fill and Clear, a whole sweep per beat
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Plays a Fill and Clear with a beat worth a whole sweep, and reports
+        /// how many bulbs were lit in every frame.
+        /// </summary>
+        private static List<int> PlaySweeps(
+            FillAxis axis, double[] beatsAtSeconds, double totalSeconds)
+        {
+            var counts = new List<int>();
+
+            foreach (bool[,] drawn in PlayBeatEffect(
+                new FillAndClearEffect(axis),
+                beatsAtSeconds,
+                totalSeconds,
+                pacing: FillPacing.WholeSweepPerBeat))
+            {
+                counts.Add(LitCells(drawn));
+            }
+
+            return counts;
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows)]
+        [InlineData(FillAxis.Columns)]
+        public void SweepPerBeat_FillsOnTheFirstBeatWhateverTheBeatNumber(FillAxis axis)
+        {
+            // The first attempt took the direction from whether the beat number
+            // was odd or even, so whether the very first beat filled or cleared
+            // depended on how many beats the track had played before the effect
+            // was selected. Clearing from the resting middle bar does not empty
+            // the wall - it inverts it, jumping to every bar but that one.
+            //
+            // Played here starting from beat one, which is odd, and so would have
+            // cleared under the old rule.
+            List<int> run = PlaySweeps(axis, new[] { 0.1 }, 0.5);
+
+            int wholeWall = WallFrame.Rows * WallFrame.Columns;
+
+            Assert.Equal(wholeWall, run[^1]);
+        }
+
+        [Theory]
+        [InlineData(FillAxis.Rows)]
+        [InlineData(FillAxis.Columns)]
+        public void SweepPerBeat_AlternatesFillAndClearOnSuccessiveBeats(FillAxis axis)
+        {
+            // Two beats for a whole cycle whatever the wall's size - which is the
+            // point of this pacing, against six or eight when stepping.
+            List<int> run = PlaySweeps(axis, new[] { 0.1, 0.6, 1.1, 1.6 }, 2.0);
+
+            int wholeWall = WallFrame.Rows * WallFrame.Columns;
+
+            // Sampled just before each following beat, by which point the sweep
+            // launched by the previous one has finished and is being held.
+            Assert.Equal(wholeWall, run[FrameAt(0.58)]);
+            Assert.Equal(0, run[FrameAt(1.08)]);
+            Assert.Equal(wholeWall, run[FrameAt(1.58)]);
+            Assert.Equal(0, run[FrameAt(1.98)]);
+        }
+
+        [Fact]
+        public void SweepPerBeat_PassesThroughEveryPictureOnTheWay()
+        {
+            // A sweep is meant to run the whole sequence quickly, not to jump
+            // from empty to full. On a five-tall wall that means one row, then
+            // three, then five - all inside one beat.
+            List<int> run = PlaySweeps(FillAxis.Rows, new[] { 0.1 }, 0.5);
+
+            var seen = new HashSet<int>();
+
+            for (int frame = FrameAt(0.1); frame < run.Count; frame++)
+            {
+                seen.Add(run[frame]);
+            }
+
+            Assert.Contains(WallFrame.Columns, seen);          // one row
+            Assert.Contains(WallFrame.Columns * 3, seen);      // three rows
+            Assert.Contains(WallFrame.Columns * 5, seen);      // the whole wall
+        }
+
+        [Fact]
+        public void SweepPerBeat_FinishesWellInsideOneBeatAndThenHolds()
+        {
+            // The sweep should be over with time to spare, so the wall is seen at
+            // rest - full, or dark - before the next beat sends it back.
+            List<int> run = PlaySweeps(FillAxis.Rows, new[] { 0.1, 0.6 }, 1.0);
+
+            int wholeWall = WallFrame.Rows * WallFrame.Columns;
+
+            // Half way between the two beats it should already be full and
+            // sitting still.
+            for (int frame = FrameAt(0.4); frame <= FrameAt(0.58); frame++)
+            {
+                Assert.Equal(wholeWall, run[frame]);
+            }
+        }
+
+        [Fact]
+        public void SweepPerBeat_AndStepPerBeat_ReallyDoDifferentThings()
+        {
+            // Guards against the setting being read but ignored, which every
+            // other test here would miss because each only ever exercises one
+            // pacing.
+            var beats = new[] { 0.1, 0.6, 1.1 };
+
+            List<int> sweeping = PlaySweeps(FillAxis.Rows, beats, 1.5);
+
+            var stepping = new List<int>();
+
+            foreach (bool[,] drawn in PlayBeatEffect(
+                new FillAndClearEffect(FillAxis.Rows), beats, 1.5,
+                pacing: FillPacing.OneStepPerBeat))
+            {
+                stepping.Add(LitCells(drawn));
+            }
+
+            int wholeWall = WallFrame.Rows * WallFrame.Columns;
+
+            // Three beats is a whole cycle and a half when sweeping, so the wall
+            // has been full already.
+            Assert.Contains(wholeWall, sweeping);
+
+            // Stepping, three beats only reaches the third of six pictures, which
+            // is the first moment the wall is full - and it gets there at the end
+            // rather than on the first beat.
+            Assert.NotEqual(sweeping[FrameAt(0.4)], stepping[FrameAt(0.4)]);
+        }
+
+        [Fact]
+        public void FillPacing_IsCarriedThroughWhenParametersAreCopied()
+        {
+            // Parameters get cloned whenever something needs a snapshot that will
+            // not change underneath it. A setting missing from Clone silently
+            // reverts to its default, which shows up as "it sometimes ignores the
+            // switch".
+            var original = new EffectParameters { FillPacing = FillPacing.WholeSweepPerBeat };
+
+            Assert.Equal(FillPacing.WholeSweepPerBeat, original.Clone().FillPacing);
         }
 
         // ------------------------------------------------------------------

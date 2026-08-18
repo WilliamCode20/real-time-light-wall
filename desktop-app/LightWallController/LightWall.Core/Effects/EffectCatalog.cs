@@ -230,7 +230,9 @@ namespace LightWall.Core.Effects
                 new BreathingEffect(),
                 new WiggleBreathingEffect(),
                 new EqBreathingEffect(),
-                new CheckerboardSwitchEffect()
+                new CheckerboardSwitchEffect(),
+                new FillAndClearEffect(FillAxis.Rows),
+                new FillAndClearEffect(FillAxis.Columns)
             };
         }
     }

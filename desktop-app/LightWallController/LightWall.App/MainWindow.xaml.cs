@@ -777,7 +777,41 @@ namespace LightWall.App
 
                 engine.Parameters.MeteorTailLength = (int)MeteorTailLengthSlider.Value;
                 engine.Parameters.BeatSource = SelectedBeatSource();
+                engine.Parameters.FillPacing = SelectedFillPacing();
             });
+        }
+
+        /// <summary>
+        /// Reads how much of a stepped animation one beat is worth, from the
+        /// radio buttons.
+        /// </summary>
+        private FillPacing SelectedFillPacing()
+        {
+            return FillSweepRadio.IsChecked == true
+                ? FillPacing.WholeSweepPerBeat
+                : FillPacing.OneStepPerBeat;
+        }
+
+        /// <summary>
+        /// Runs when either fill pacing radio button is picked.
+        ///
+        /// Takes effect on the next frame. Switching mid-track abandons whatever
+        /// sweep was in progress and picks up cleanly on the following beat,
+        /// rather than trying to convert one pacing into the other part way
+        /// through.
+        /// </summary>
+        private void FillPacingRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            // WPF raises Checked while the window is still being built. The first
+            // radio button is marked IsChecked in the XAML, so this fires before
+            // the second one has been created - and SelectedFillPacing reads that
+            // second one.
+            if (FillSweepRadio is null)
+            {
+                return;
+            }
+
+            _clock.Modify(engine => engine.Parameters.FillPacing = SelectedFillPacing());
         }
 
         /// <summary>

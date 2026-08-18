@@ -46,6 +46,39 @@ namespace LightWall.Core.Effects
     }
 
     /// <summary>
+    /// How much of a stepped animation one beat is worth.
+    ///
+    /// The same sequence of pictures can be paced two quite different ways, and
+    /// which is wanted is a matter of taste rather than of correctness - so it is
+    /// offered as a choice rather than settled in the code.
+    /// </summary>
+    public enum FillPacing
+    {
+        /// <summary>
+        /// One picture per beat.
+        ///
+        /// Slow and deliberate. A whole fill-and-clear cycle takes as many beats
+        /// as it has pictures - six for the horizontal version, eight for the
+        /// vertical - so at 120 beats a minute it is a three or four second
+        /// cycle. The wall moves on every beat, and the movement IS the beat.
+        /// </summary>
+        OneStepPerBeat,
+
+        /// <summary>
+        /// A whole sweep per beat.
+        ///
+        /// One beat runs the entire fill quickly, one picture after another, and
+        /// then holds full until the next beat runs the entire clear. Two beats
+        /// for a complete cycle however many pictures are in it.
+        ///
+        /// The punchier reading: the beat is the moment a sweep is LAUNCHED
+        /// rather than the moment the wall moves, in the same way a Starburst is
+        /// launched by a beat and then plays out on its own.
+        /// </summary>
+        WholeSweepPerBeat
+    }
+
+    /// <summary>
     /// Holds the user-adjustable settings that effects can read while drawing.
     ///
     /// Think of this as "the knobs on the front panel".
@@ -109,6 +142,21 @@ namespace LightWall.Core.Effects
         public BeatSource BeatSource { get; set; } = BeatSource.Detected;
 
         /// <summary>
+        /// How much of a stepped animation one beat is worth. See FillPacing.
+        ///
+        /// Used only by the Fill and Clear effects at present, so it sits closer
+        /// to MeteorTailLength than to BeatSource in spirit. It is phrased in
+        /// general terms because the question - does a beat advance one picture,
+        /// or launch a whole run of them - is one any stepped effect could face,
+        /// and answering it the same way everywhere is better than each effect
+        /// inventing its own control.
+        ///
+        /// Defaults to one step per beat, which is the slower and more
+        /// deliberate of the two.
+        /// </summary>
+        public FillPacing FillPacing { get; set; } = FillPacing.OneStepPerBeat;
+
+        /// <summary>
         /// Creates a copy of these parameters.
         ///
         /// This is useful when something needs a stable snapshot of the settings
@@ -122,7 +170,8 @@ namespace LightWall.Core.Effects
             {
                 MeteorTailLength = MeteorTailLength,
                 IdentifyBulbIndex = IdentifyBulbIndex,
-                BeatSource = BeatSource
+                BeatSource = BeatSource,
+                FillPacing = FillPacing
             };
         }
     }

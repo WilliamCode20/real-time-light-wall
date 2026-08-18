@@ -322,6 +322,51 @@
                 </Grid>
 
                 <!--
+                    How much of a stepped animation one beat is worth.
+
+                    Used by the two Fill and Clear effects. One step per beat is
+                    slow and deliberate - the wall moves on every beat, and a
+                    whole cycle takes six or eight of them. A whole sweep per beat
+                    is punchier: one beat runs the entire fill in a quick run of
+                    pictures, the next runs the entire clear.
+                -->
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="Fill and clear"
+                               VerticalAlignment="Center"
+                               FontSize="14"
+                               Foreground="White"
+                               Margin="0,0,12,0"/>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <RadioButton x:Name="FillStepRadio"
+                                     Content="Step per beat"
+                                     GroupName="FillPacing"
+                                     IsChecked="True"
+                                     Foreground="White"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,18,0"
+                                     ToolTip="Each beat moves the wall on by one picture. Six or eight beats to a whole cycle."
+                                     Checked="FillPacingRadio_Checked"/>
+
+                        <RadioButton x:Name="FillSweepRadio"
+                                     Content="Sweep per beat"
+                                     GroupName="FillPacing"
+                                     Foreground="White"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     ToolTip="Each beat runs a whole fill or a whole clear quickly, then holds. Two beats to a whole cycle."
+                                     Checked="FillPacingRadio_Checked"/>
+                    </StackPanel>
+                </Grid>
+
+                <!--
                     Audio capture.
 
                     Listens to what this computer is PLAYING, not to a

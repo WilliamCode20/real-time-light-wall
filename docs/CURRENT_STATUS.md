@@ -25,14 +25,14 @@ Border, Cross, Sparkle
 
 **Frame-sequence animations (3):** Row Sweep, Border Pulse, Spiral
 
-**Procedural animations (10):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
+**Procedural animations (12):** Meteor, Sparkle Storm, EQ Bumper, Beat Flash,
 Tempo Pulse, Starburst, Breathing, Wiggle Breathing, EQ Breathing, Checkerboard
-Switch
+Switch, Fill Horizontal, Fill Vertical
 
 **Diagnostics (1):** Identify Bulb, which lights one bulb at a time so the pin
 map can be checked against the relay labels.
 
-All 23 are registered in `EffectCatalog`, and the window builds its buttons from
+All 25 are registered in `EffectCatalog`, and the window builds its buttons from
 that list. Adding an effect is a one-entry change.
 
 One gap: `Diagnostics` is a separate list in the catalog, but the window still
@@ -625,6 +625,70 @@ eighteen of the thirty-five bulbs lit *continuously* rather than touching a high
 number for an instant — roughly a hundred milliamps against the two hundred
 available. Comfortable, but a sustained load rather than a flash, which is the
 distinction the caution in this project is really about.
+
+### Fill and Clear — horizontal and vertical
+
+The wall fills from the middle outward, then empties the same way, one step per
+beat. Two versions from one class: horizontal bars spreading up and down from the
+middle row, or vertical bars spreading left and right from the middle column.
+
+The emptying spreads outward exactly as the filling did, so what grows is a
+**hole in the middle** rather than a wall draining inward from its edges. That
+detail is most of the character of the effect, and there is a test pinning it.
+
+#### Two ways to pace it
+
+The same sequence of pictures, timed two ways. **Fill and clear** in Animation
+Controls picks between them, and they look quite different.
+
+**One step per beat** is slow and deliberate — every beat moves the wall on by one
+picture. Counting outward from the middle, a wall five tall has three positions
+and one seven wide has four; filling uses each once and emptying uses each again:
+
+| Version | Steps out | Beats per cycle | At 120 BPM |
+|---|---|---|---|
+| Horizontal | 3 | 6 | 3 seconds |
+| Vertical | 4 | 8 | 4 seconds |
+
+Verified in the running app, counting lit rows on each beat:
+
+```
+1  ->  3  ->  5  ->  4  ->  2  ->  0  ->  (repeats)
+```
+
+**A whole sweep per beat** is punchier. One beat runs the entire fill in a quick
+run of pictures and holds the wall full; the next runs the entire clear and holds
+it dark. Two beats for a complete cycle whatever the wall's size. The beat is the
+moment a sweep is *launched* rather than the moment the wall moves — the same
+relationship a Starburst has with the beat that threw it. Verified live:
+
+```
+0 -> 1 -> 3 -> 5 (held) -> 4 -> 2 -> 0 (held)
+```
+
+**Memory is needed for one pacing and not the other.** Stepping needs none: the
+beat number alone says which picture to draw, since dividing it by the number of
+pictures leaves the position as the remainder — the same approach as Checkerboard
+Switch. Sweeping does need it, because a sweep is an *event* whose start time was
+decided when a beat arrived and cannot be recovered from the current time.
+
+**A mistake worth recording.** The sweep first took its direction from whether the
+beat number was odd or even, reasoning that arithmetic on the count could not
+drift where a remembered flag might. Two faults, both found by watching it play.
+The wall rests showing a single middle bar, so a first beat landing on an odd
+number ran a *clear* — and clearing assumes the wall is full, so instead of
+emptying it inverted, jumping from one lit bar to every bar but that one. Which
+you got depended on nothing more than how many beats the track had played before
+the effect was selected. And the drift the parity was guarding against turned out
+to be the worse behaviour anyway: if two beats arrive between frames the count
+jumps by two, the parity is unchanged, and the same direction runs twice with the
+second doing nothing visible. Alternating simply carries on. The first sweep now
+always fills.
+
+Power: stepping, the whole wall is lit for one beat in six or eight — a flash.
+Sweeping, it is lit for most of every second beat, since the wall holds full while
+waiting for the beat that will clear it. Both are comfortable; sweeping is the
+heavier and is closer to a hold.
 
 ### Choosing where the beat comes from
 
