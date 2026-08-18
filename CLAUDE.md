@@ -115,7 +115,21 @@ These are load-bearing. Breaking them causes real problems later.
 
    This is also the single largest controllable contributor to audio-to-light
    latency (~33 ms worst case). Raising it to 60 Hz is within what the original
-   show demonstrated, if latency ever matters more than relay wear.
+   show demonstrated. `WallOutputService.OutputRateHz` is already a settable
+   property, so it is a one-line change.
+
+   **What the trade actually is.** An earlier version of this note said "relay
+   wear", which is wrong and worth correcting: the relays are *solid state*, so
+   there are no contacts to pit, and the bulbs are LEDs, which do not care about
+   switching cycles. Bandwidth is not the limit either — 9-byte packets at 60 Hz
+   is 540 bytes/second against the ~11,500 that 115200 baud carries, under 5%.
+
+   The real limiter is the **zero-cross behaviour**. A zero-cross SSR can only
+   change state as the mains waveform passes zero, every 8.3 ms on 60 Hz mains.
+   At a 33 ms update interval that slop is a quarter of the period; at 16.7 ms it
+   is half. So 60 Hz does not buy a clean halving — expect to feel perhaps 10–12
+   ms of the 16 ms on paper. Past ~120 Hz it buys nothing at all, since the
+   hardware cannot switch faster than the crossings.
 
 9. **All audio analysis lives in Core, not IO.** `AudioAnalyser` is the front
    door. Everything it does is arithmetic, so it is testable against signals whose

@@ -52,9 +52,22 @@ Whatever values feel right in practice should become the defaults.
 
 30 packets/second is the safe number and the largest single contributor to
 audio-to-light latency (~33 ms worst case). The original show demonstrated ~15 ms
-dwell times, so 60 Hz is within proven territory and would halve that. Worth
-deciding deliberately once the delay has been felt on the real wall — the
-trade-off is relay wear.
+dwell times, so 60 Hz is within proven territory.
+`WallOutputService.OutputRateHz` is already a settable property, so it is a
+one-line change.
+
+**The trade is smaller than this file used to claim.** It said "relay wear",
+which is wrong: the relays are solid state, so there are no contacts to wear, and
+the bulbs are LEDs, which do not care about switching cycles. Bandwidth is not
+the limit either — under 5% of the serial link at 60 Hz.
+
+What does limit it is the zero-cross SSRs, which can only switch as the mains
+crosses zero, every 8.3 ms. That slop is a quarter of a 33 ms interval but half
+of a 16.7 ms one, so 60 Hz buys perhaps 10–12 ms of the 16 ms it promises on
+paper, and past ~120 Hz nothing at all.
+
+Still worth doing once the delay has been felt on the real wall. There is no
+meaningful risk to it; the question is only whether the gain is noticeable.
 
 ## Next features, roughly in order
 
