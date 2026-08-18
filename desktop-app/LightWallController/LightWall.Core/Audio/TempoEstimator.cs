@@ -206,6 +206,41 @@ namespace LightWall.Core.Audio
         /// </summary>
         private const double LargestTrustStepSeconds = 0.25;
 
+        /// <summary>
+        /// The simple ratios at which two readings are the same tempo counted
+        /// differently rather than different tempos.
+        ///
+        /// Doubling and halving are the octave, and three-to-two either way is a
+        /// triplet or a dotted feel. Nothing beyond these: the further the ratio
+        /// gets from 1 the more genuinely different tempos happen to land near
+        /// it, and absorbing one of those would be worse than the problem being
+        /// solved.
+        /// </summary>
+        private static readonly double[] RelatedRatios =
+        {
+            0.5, 2.0 / 3.0, 1.5, 2.0
+        };
+
+        /// <summary>
+        /// How much trust the settled tempo needs before a related reading is
+        /// absorbed rather than treated as a challenge.
+        ///
+        /// WHY THIS IS GATED AT ALL
+        ///
+        /// Absorbing is right in the middle of a track, where a three-to-two
+        /// reading means a section changed feel. It is wrong at the start of one,
+        /// where the estimator may simply have picked the wrong reading first and
+        /// needs to be free to correct itself - and wrong across a track change,
+        /// where the next song genuinely might be half or one-and-a-half times
+        /// the last.
+        ///
+        /// Trust already separates those cases: it is high when a tempo has been
+        /// confirmed for a while, and low early on and after silence. Half a
+        /// verse of agreement is about where absorbing starts being the safer
+        /// answer.
+        /// </summary>
+        private const double TrustToAbsorbRelatedTempos = 0.5;
+
         /// <summary>How much the settled tempo has earned, from 0 to 1.</summary>
         private double _trust;
 
@@ -502,9 +537,28 @@ namespace LightWall.Core.Audio
         {
             if (_onsetTimes.Count < MinimumOnsetsNeeded)
             {
-                Bpm = 0.0;
-                Confidence = 0.0;
-                _measuredConfidence = 0.0;
+                // A THIN PATCH IS NOT A REASON TO THROW AWAY A GOOD ANSWER.
+                //
+                // This used to set Bpm to zero, which quietly defeated the whole
+                // hold-through-quiet-passages design from the other direction.
+                // The hold in Update is written to keep the tempo alive for
+                // thirty seconds and fade only confidence - but a break sparse
+                // enough to leave fewer than a handful of sounds in the window
+                // came through here first and wiped the tempo outright, long
+                // before the hold ever got a say.
+                //
+                // Measured on a break with a sound every two seconds: the tempo
+                // went to zero, which stops Tempo Pulse dead rather than letting
+                // it carry the beat through - exactly the passage it exists for.
+                //
+                // Nothing established yet still reports nothing, because there
+                // genuinely is no answer to give.
+                if (Bpm <= 0.0)
+                {
+                    Confidence = 0.0;
+                    _measuredConfidence = 0.0;
+                }
+
                 return;
             }
 
@@ -712,6 +766,37 @@ namespace LightWall.Core.Audio
                 return;
             }
 
+            // THE SAME TEMPO COUNTED DIFFERENTLY IS NOT A RIVAL.
+            //
+            // A section that moves to a triplet or a dotted feel measures as
+            // one and a half times the tempo, or two thirds of it, without the
+            // music having changed speed at all. Treating that as a challenger
+            // and switching to it is both wrong and highly visible.
+            //
+            // Measured on a settled 120: a break of triplets dragged the
+            // estimate to 180 and a dotted one dragged it to 80 - each the
+            // same tempo wearing a different hat.
+            //
+            // Doubling and halving are deliberately in the list too, though they
+            // turned out already to be handled: only tempos between 70 and 180
+            // are ever tried, and the scoring prefers whichever explains the
+            // sounds at lower multiples. Half-time and double-time breaks both
+            // measured a rock-steady 120 before this was written. They are
+            // included because relying on the range to keep covering that is
+            // luck rather than design, and the cost of listing them is nothing.
+            if (_trust >= TrustToAbsorbRelatedTempos)
+            {
+                double folded = FoldTowards(measuredBpm, Bpm);
+
+                if (Math.Abs(folded - Bpm) <= Bpm * DistinctTempoTolerance)
+                {
+                    Bpm += (folded - Bpm) * 0.25;
+                    _challengerBpm = 0.0;
+                    _challengerLeading = false;
+                    return;
+                }
+            }
+
             // Something different is being measured. Is it beating the settled
             // answer by enough to be taken seriously?
             //
@@ -774,6 +859,33 @@ namespace LightWall.Core.Audio
                 // itself the same way the last one did.
                 _trust = 0.0;
             }
+        }
+
+        /// <summary>
+        /// Reads a tempo at whichever simple ratio lands nearest the settled
+        /// one, so that the same tempo counted differently comes out the same.
+        ///
+        /// Returns the reading unchanged when no ratio gets closer, which is
+        /// what keeps a genuinely different tempo recognisable as a challenger.
+        /// </summary>
+        private static double FoldTowards(double bpm, double settled)
+        {
+            double best = bpm;
+            double bestDistance = Math.Abs(bpm - settled);
+
+            foreach (double ratio in RelatedRatios)
+            {
+                double candidate = bpm * ratio;
+                double distance = Math.Abs(candidate - settled);
+
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = candidate;
+                }
+            }
+
+            return best;
         }
 
         /// <summary>

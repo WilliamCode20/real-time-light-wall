@@ -85,17 +85,26 @@ Three fixes, in value order:
    one at a genuinely different tempo — which is what makes the next item matter
    more than it looked before this was built.
 
-2. **Octave awareness.** Breaks routinely halve the rhythmic density. If the best
-   challenger sits near 2× or ½× the incumbent, that is the same tempo counted
-   differently, not a rival — treat it as agreement rather than switching.
+2. ~~**Octave awareness.**~~ **Done, and it was not what it looked like.**
 
-   This is now the highest-value remaining change, because it does not trade
-   break resistance against track-change speed the way trust does. It removes the
-   commonest break challenger *entirely* rather than making it work harder, so it
-   improves one without costing the other.
+   The plan was to stop breaks that halve or double the density being read as
+   rivals. Measuring first showed **that case was already handled** — only tempos
+   from 70 to 180 are tried and the scoring prefers lower multiples, so half-time
+   and double-time breaks both held a steady 120 before anything was written.
+
+   What was actually broken was **three-to-two** — triplet and dotted feels,
+   which had never been considered and dragged a settled 120 to 180 and 80
+   respectively. And worse, a **sparse break wiped the tempo to zero**, defeating
+   the hold-through-quiet design from a direction nobody had looked at. Both are
+   fixed; see CURRENT_STATUS for the measured before-and-after.
+
+   Worth remembering as a method note: the fix that was planned was not the fix
+   that was needed, and twenty minutes of measurement was what told the
+   difference. The same is worth doing before item 3.
 
 3. **Band-aware onsets** (see below), so the estimator can tell "the drum went
-   away" from "the drum changed".
+   away" from "the drum changed". Now the largest remaining item — but measure
+   before building, given how item 2 turned out.
 
 #### Following the beat when the drums leave
 

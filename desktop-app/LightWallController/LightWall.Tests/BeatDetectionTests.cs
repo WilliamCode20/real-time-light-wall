@@ -547,6 +547,103 @@ namespace LightWall.Tests
                 "long enough to be noticed as the wall fighting the music.");
         }
 
+        // ------------------------------------------------------------------
+        // Breaks that change the feel rather than the speed
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Settles at 120 BPM, then plays a break whose sounds arrive at a given
+        /// spacing, and reports the tempo part way through that break.
+        /// </summary>
+        private static double TempoDuringBreak(double breakInterval)
+        {
+            var estimator = new TempoEstimator();
+
+            const double tick = 0.005;
+            const double settleSeconds = 35.0;
+            const double breakSeconds = 20.0;
+
+            double nextBeat = 0.0;
+            double reported = 0.0;
+
+            for (double now = 0.0; now <= settleSeconds + breakSeconds; now += tick)
+            {
+                bool inBreak = now >= settleSeconds;
+                double interval = inBreak ? breakInterval : 0.5;
+
+                if (now >= nextBeat)
+                {
+                    estimator.AddBeat(now);
+                    nextBeat = now + interval;
+                }
+
+                estimator.Update(now);
+
+                if (inBreak && now > settleSeconds + 8.0)
+                {
+                    reported = estimator.Bpm;
+                }
+            }
+
+            return reported;
+        }
+
+        /// <summary>
+        /// A SECTION CHANGING FEEL IS NOT A SECTION CHANGING SPEED.
+        ///
+        /// Each of these spacings is the same 120 BPM counted differently - two
+        /// sounds a beat, one every other beat, three to a beat, one every beat
+        /// and a half. The music has not changed speed and neither should the
+        /// reported tempo.
+        ///
+        /// Measured before this was handled: triplets dragged a settled 120 up
+        /// to 180 and a dotted feel dragged it down to 80. The doubling and
+        /// halving cases already held, because only tempos from 70 to 180 are
+        /// ever tried and the scoring prefers whichever explains the sounds at
+        /// lower multiples - but they are covered here so that stays true.
+        /// </summary>
+        [Theory]
+        [InlineData(1.0)]           // half-time
+        [InlineData(0.25)]          // double-time
+        [InlineData(1.0 / 3.0)]     // triplets
+        [InlineData(0.75)]          // dotted
+        public void ABreakThatChangesFeelDoesNotChangeTheTempo(double breakInterval)
+        {
+            Assert.InRange(TempoDuringBreak(breakInterval), 116.0, 124.0);
+        }
+
+        [Fact]
+        public void ASparseBreakDoesNotThrowTheTempoAway()
+        {
+            // A break down to one sound every two seconds leaves too few in the
+            // window to work from. Recalculate used to answer that by setting the
+            // tempo to zero, which quietly defeated the hold in Update from the
+            // other direction - the hold is written to keep a tempo alive for
+            // thirty seconds, but the wipe came first and it never got a say.
+            //
+            // Zero means Tempo Pulse stops dead, in exactly the passage it exists
+            // to carry.
+            Assert.InRange(TempoDuringBreak(2.0), 116.0, 124.0);
+        }
+
+        [Fact]
+        public void AGenuinelyDifferentTempoIsStillRecognised()
+        {
+            // The guard on the two tests above. Absorbing readings related by a
+            // simple ratio must not turn into absorbing everything - a section at
+            // a tempo with no simple relationship to the settled one is a real
+            // challenger and has to stay one.
+            //
+            // 0.41 s between sounds is about 146 BPM, which is not half, double,
+            // two thirds or one and a half of 120.
+            double duringBreak = TempoDuringBreak(0.41);
+
+            Assert.True(
+                duringBreak > 130.0,
+                $"An unrelated tempo was absorbed as though it were the same one, " +
+                $"reading {duringBreak:F1} instead of following the music.");
+        }
+
         [Fact]
         public void ABriefWobbleDoesNotShiftASettledTempo()
         {

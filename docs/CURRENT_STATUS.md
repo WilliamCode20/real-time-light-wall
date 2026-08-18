@@ -412,12 +412,54 @@ What it buys is track changes, which usually carry a gap. Measured with a three
 second gap, a new track is picked up in 7.0 s rather than ~10.
 
 **The honest limit.** Resistance to breaks and speed of track changes are the
-same number pulling in opposite directions — about ten seconds of each. That
-covers short breaks and is not enough for a long one at a genuinely different
-tempo. The way out is not to tune this trade but to stop the commonest break from
-producing a challenger at all, which is what octave awareness is for: most breaks
-move to half or double time, and those are the same tempo counted differently
-rather than a rival. See `NEXT_STEPS`.
+same number pulling in opposite directions — about ten seconds of each. That is
+enough for a short break at a genuinely unrelated tempo and not for a long one.
+The way past it is not to tune the trade but to stop breaks producing a
+challenger at all, which is what the next section does.
+
+#### A section changing feel is not a section changing speed
+
+Breaks routinely change the *feel* without changing the speed. Measured on a
+settled 120 BPM, playing 20 seconds of break at various spacings:
+
+| Break | Before | After |
+|---|---|---|
+| half-time (1.0 s) | 120.0 ✓ | 120.0 ✓ |
+| double-time (0.25 s) | 120.0 ✓ | 120.0 ✓ |
+| triplet (0.333 s) | **180.0** ✗ | 120.0 ✓ |
+| dotted (0.75 s) | **80.0** ✗ | 120.0 ✓ |
+| sparse pad (2.0 s) | **0.0** ✗ | 119.5 ✓ |
+| unrelated (0.41 s) | 146.3 | 146.3 — *correctly still a challenger* |
+
+Two findings worth recording, because the first contradicted what this was
+started to fix.
+
+**Doubling and halving were already handled.** Only tempos from 70 to 180 are
+ever tried, and the scoring prefers whichever explains the sounds at lower
+multiples, so half-time and double-time breaks both held a rock-steady 120
+before anything was written. The problem was **three-to-two** relationships —
+triplet and dotted feels — which had never been considered. All four ratios are
+now listed, doubling included, because relying on the range to keep covering that
+is luck rather than design.
+
+**A sparse break was wiping the tempo outright.** `Recalculate` answered "too few
+sounds to work from" by setting the tempo to zero, which defeated the
+hold-through-quiet design from the other direction: the hold in `Update` keeps a
+tempo alive for 30 s, but the wipe ran first and it never got a say. Zero means
+Tempo Pulse stops dead in exactly the passage it exists to carry. It now leaves a
+settled tempo alone and only reports nothing when nothing was ever established.
+
+**The absorption is gated on trust**, and deliberately. It is right mid-track,
+where a three-to-two reading means a section changed feel. It is wrong at the
+*start* of one, where the estimator may have picked the wrong reading first and
+needs to be free to correct itself, and wrong across a track change where the
+next song genuinely might be half or one-and-a-half times the last. Trust already
+separates those cases.
+
+**It stays selective.** A break at 146 BPM against a settled 120 is not related
+by any simple ratio and is still treated as a real challenger — there is a test
+guarding that, because absorbing related tempos must not slide into absorbing
+everything.
 
 #### The version before this, and how it failed
 
