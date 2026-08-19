@@ -711,10 +711,28 @@
                                Foreground="White"
                                Margin="0,0,12,0"/>
 
+                    <!--
+                        THE TOP OF THIS RANGE MUST MATCH OnsetDetector.AutoHighest.
+
+                        The Auto tick-box lets the detector move this setting
+                        itself, within bounds it keeps privately. A slider that
+                        stopped short of those bounds would not merely fail to
+                        display the value - WPF clamps Value to Maximum, and the
+                        ValueChanged handler writes the slider back into the
+                        detector, so the interface would quietly drag the setting
+                        back down every frame and cap automatic adjustment below
+                        where it is allowed to go. That is exactly the "dense
+                        track started far too loose" case Auto exists for.
+
+                        The bottom is deliberately LOWER than the detector's own
+                        floor of 1.5. Automatic adjustment should not wander down
+                        there, but a person diagnosing double-triggering by hand
+                        should still be able to.
+                    -->
                     <Slider x:Name="BeatSensitivitySlider"
                             Grid.Column="1"
                             Minimum="1"
-                            Maximum="10"
+                            Maximum="12"
                             Value="5"
                             TickFrequency="0.25"
                             SmallChange="0.25"

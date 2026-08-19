@@ -836,7 +836,24 @@ namespace LightWall.Tests
         /// </summary>
         private static AudioFeatures PlayBeatWithTexture(double betweenHits)
         {
-            var analyser = new AudioAnalyser(SampleRate);
+            return PlayBeatWithTexture(
+                new AudioAnalyser(SampleRate), betweenHits, totalSeconds: 12.0);
+        }
+
+        /// <summary>
+        /// The same, played through an analyser the caller already has and for
+        /// as long as the caller wants.
+        ///
+        /// Separate so that tests about the analyser's own state - what
+        /// automatic adjustment settled on, what survives a reset - can set it
+        /// up first and inspect it afterwards, rather than only seeing the
+        /// snapshot that comes back.
+        /// </summary>
+        private static AudioFeatures PlayBeatWithTexture(
+            AudioAnalyser analyser,
+            double betweenHits,
+            double totalSeconds)
+        {
             var random = new Random(4242);
 
             const double bufferSeconds = 0.01;
@@ -845,7 +862,7 @@ namespace LightWall.Tests
             double elapsed = 0.0;
             AudioFeatures features = AudioFeatures.Silence;
 
-            while (elapsed < 12.0)
+            while (elapsed < totalSeconds)
             {
                 double intoBeat = elapsed % 0.5;
 
@@ -907,24 +924,8 @@ namespace LightWall.Tests
             analyser.Onsets.Sensitivity = startingSensitivity;
             analyser.Onsets.AutoSensitivity = true;
 
-            var random = new Random(4242);
-            const double bufferSeconds = 0.01;
-            int bufferSamples = (int)(SampleRate * bufferSeconds);
-
-            double elapsed = 0.0;
-            AudioFeatures features = AudioFeatures.Silence;
-
-            while (elapsed < 60.0)
-            {
-                double intoBeat = elapsed % 0.5;
-
-                float[] buffer = intoBeat < 0.03
-                    ? MakeHit(bufferSamples, random)
-                    : MakeHit(bufferSamples, random, betweenHits);
-
-                features = analyser.Process(buffer, 1, bufferSeconds);
-                elapsed += bufferSeconds;
-            }
+            AudioFeatures features =
+                PlayBeatWithTexture(analyser, betweenHits, totalSeconds: 60.0);
 
             return (analyser.Onsets.Sensitivity, features.TempoBpm);
         }
@@ -976,6 +977,63 @@ namespace LightWall.Tests
             }
 
             Assert.Equal(5.0, analyser.Onsets.Sensitivity, precision: 3);
+        }
+
+        /// <summary>
+        /// Automatic adjustment has to keep working after a reset.
+        ///
+        /// WHY THIS IS EASY TO GET WRONG, AND WAS
+        ///
+        /// Reset happens when capture is restarted, and it puts elapsed time
+        /// back to zero at the same moment. The judging window remembers the
+        /// time it started, and that field was originally left untouched by
+        /// Reset - so a window opened at 60 seconds survived into a session
+        /// whose clock now read zero, and sat 60 seconds in the future.
+        ///
+        /// The "have four seconds passed yet" test then compared against a
+        /// NEGATIVE elapsed, decided the window had not finished, and returned
+        /// without restarting it. Automatic adjustment went silently dormant
+        /// until wall time caught back up, which for a long first session means
+        /// minutes.
+        ///
+        /// Nothing about that is visible from outside: the tick-box is still on,
+        /// the slider still moves when dragged, and the setting simply never
+        /// adjusts itself. Measured on a dense track started deliberately too
+        /// loose - a second run after a reset stayed pinned at 1.5 where the
+        /// first had correctly tightened to about 2.6.
+        /// </summary>
+        [Fact]
+        public void AutomaticSensitivityStillWorksAfterAReset()
+        {
+            var analyser = new AudioAnalyser(SampleRate);
+            analyser.Onsets.Sensitivity = 1.5;
+            analyser.Onsets.AutoSensitivity = true;
+
+            // A dense track started far too loose, which is the case automatic
+            // adjustment exists to rescue.
+            PlayBeatWithTexture(analyser, betweenHits: 0.35, totalSeconds: 60.0);
+
+            double afterFirstRun = analyser.Onsets.Sensitivity;
+
+            Assert.True(
+                afterFirstRun > 1.5,
+                $"Expected the first run to tighten from 1.5, but it settled at {afterFirstRun:F3}. " +
+                "The rest of this test proves nothing if the starting case never adjusts.");
+
+            // Restarting capture, which is what Reset is for. Elapsed time goes
+            // back to zero here, which is the whole difficulty.
+            analyser.Reset();
+
+            analyser.Onsets.Sensitivity = 1.5;
+            analyser.Onsets.AutoSensitivity = true;
+
+            PlayBeatWithTexture(analyser, betweenHits: 0.35, totalSeconds: 60.0);
+
+            Assert.True(
+                analyser.Onsets.Sensitivity > 1.5,
+                $"After a reset the setting stayed at {analyser.Onsets.Sensitivity:F3}, so automatic " +
+                "adjustment never ran. The judging window is most likely still holding a start " +
+                "time from before the reset.");
         }
 
         // ------------------------------------------------------------------

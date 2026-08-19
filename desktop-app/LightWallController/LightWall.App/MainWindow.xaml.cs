@@ -1098,7 +1098,27 @@ namespace LightWall.App
                 return;
             }
 
-            _audio.BeatSensitivity = BeatSensitivitySlider.Value;
+            // While Auto is on the detector owns this value and the slider is
+            // only reporting it, so the write goes one way and this handler must
+            // not send it back.
+            //
+            // Without the guard the flow is a loop: the detector moves,
+            // ShowAutomaticBeatSize copies it onto the slider, and landing there
+            // raises this event, which writes the slider back into the detector.
+            // The two agree closely enough that it does no visible harm - but a
+            // value only copied across once it has drifted by 0.01 means the
+            // detector is being handed back a very slightly stale version of its
+            // own setting, and a loop with no reason to exist is the kind of
+            // thing that starts mattering the moment somebody changes one end.
+            //
+            // Note this guards ONLY the write. The readout below still has to
+            // run, or the number on screen would freeze the moment Auto was
+            // switched on - which is precisely when it is the only way to see
+            // what the detector is doing.
+            if (AutoBeatSizeCheckBox?.IsChecked != true)
+            {
+                _audio.BeatSensitivity = BeatSensitivitySlider.Value;
+            }
 
             // No "x" suffix any more. This stopped being a multiplier when the
             // threshold moved to typical-plus-spread; it is now a count of how

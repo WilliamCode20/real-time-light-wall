@@ -235,7 +235,20 @@ namespace LightWall.Core.Audio
         private const double AutoTightenStep = 1.15;
         private const double AutoLoosenStep = 0.93;
 
-        /// <summary>The range automatic adjustment will not leave.</summary>
+        /// <summary>
+        /// The range automatic adjustment will not leave.
+        ///
+        /// AutoHighest MUST MATCH the Beat size slider's Maximum in
+        /// MainWindow.xaml. A slider stopping short of it does not merely fail
+        /// to display the value: WPF clamps a Slider's Value to its Maximum, and
+        /// the handler writes the slider back into this detector, so the
+        /// interface would pull the setting back down every frame and cap
+        /// automatic tightening below where it is allowed to reach.
+        ///
+        /// The slider's Minimum is deliberately lower than AutoLowest, which is
+        /// fine and not the same kind of mismatch - automatic adjustment should
+        /// not wander down there, but a person setting it by hand may.
+        /// </summary>
         private const double AutoLowest = 1.5;
         private const double AutoHighest = 12.0;
 
@@ -391,6 +404,18 @@ namespace LightWall.Core.Audio
             CurrentFlux = 0.0;
             CurrentThreshold = 0.0;
             TriggerRatio = 0.0;
+
+            // The automatic-adjustment window has to be forgotten too, and it
+            // was originally missed here.
+            //
+            // Resetting happens when capture restarts, and AudioAnalyser.Reset
+            // puts elapsed time back to zero at the same moment. A window start
+            // left at, say, 300 seconds would then sit in the future: the
+            // "have four seconds passed yet" test compares against a negative
+            // elapsed and never fires, so automatic adjustment would lie dormant
+            // for another five minutes with no sign anything was wrong.
+            _autoWindowStartSeconds = 0.0;
+            _detectionsThisWindow = 0;
         }
 
         /// <summary>
