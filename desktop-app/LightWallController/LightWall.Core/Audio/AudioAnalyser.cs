@@ -73,6 +73,39 @@ namespace LightWall.Core.Audio
         /// </summary>
         public AnalysisRecorder? Recorder { get; set; }
 
+        /// <summary>
+        /// How many samples pass between one analysis and the next.
+        ///
+        /// THE ANALYSIS RATE IS CHOSEN HERE RATHER THAN BY THE SOUND CARD.
+        ///
+        /// 512 samples is about 10.7 ms at 48 kHz, so roughly 94 analyses a
+        /// second. That is the rate the whole beat detection chain was written
+        /// for and, until this existed, never actually got - see AnalyseOneHop.
+        ///
+        /// It also has to be well under the transform's 1024-sample window, or
+        /// successive windows would leave gaps between them rather than
+        /// overlapping. Half the window is the usual choice and is what this is.
+        /// </summary>
+        private const int HopSamples = 512;
+
+        /// <summary>
+        /// How many samples have arrived since the last analysis.
+        ///
+        /// Carried across buffers, because a buffer almost never contains a
+        /// whole number of hops - the remainder starts the next one.
+        /// </summary>
+        private int _samplesSinceHop;
+
+        /// <summary>
+        /// The band levels from the most recent analysis.
+        ///
+        /// Held because a snapshot is produced once per BUFFER while analysis
+        /// happens once per HOP, and the two do not line up. A buffer too short
+        /// to complete a hop reports the levels from the previous one, which is
+        /// honest: nothing new has been measured.
+        /// </summary>
+        private double[] _latestBands = new double[FrequencyBands.Count];
+
         /// <summary>When the metronome last struck.</summary>
         private double _lastPulseSeconds = double.NegativeInfinity;
 
@@ -158,12 +191,87 @@ namespace LightWall.Core.Audio
             int channels,
             double deltaSeconds)
         {
-            _elapsedSeconds += deltaSeconds;
-
             (double rms, double peak) = AudioSampleMath.Analyse(interleavedSamples);
 
-            Spectrum.AddSamples(interleavedSamples, channels);
-            double[] bands = Spectrum.Analyse(deltaSeconds);
+            if (channels < 1)
+            {
+                throw new ArgumentOutOfRangeException(nameof(channels));
+            }
+
+            // How many moments in time this buffer holds, once the channels are
+            // mixed down to one.
+            int samplesInBuffer = interleavedSamples.Length / channels;
+
+            if (samplesInBuffer <= 0 || deltaSeconds <= 0.0)
+            {
+                _elapsedSeconds += Math.Max(deltaSeconds, 0.0);
+                return Level.Update(rms, peak, deltaSeconds, _latestBands, BuildBeatInfo());
+            }
+
+            // Time is advanced per SAMPLE rather than per buffer, so that a
+            // reading taken part way through a buffer is timestamped part way
+            // through it. Derived from the measured buffer length rather than
+            // from the nominal sample rate, so it cannot drift away from the
+            // clock everything else runs on.
+            double secondsPerSample = deltaSeconds / samplesInBuffer;
+
+            int offset = 0;
+
+            while (offset < samplesInBuffer)
+            {
+                // Fill up to the next hop boundary, or to the end of the buffer,
+                // whichever comes first.
+                int take = Math.Min(HopSamples - _samplesSinceHop, samplesInBuffer - offset);
+
+                Spectrum.AddSamples(
+                    interleavedSamples.Slice(offset * channels, take * channels), channels);
+
+                _samplesSinceHop += take;
+                offset += take;
+                _elapsedSeconds += take * secondsPerSample;
+
+                if (_samplesSinceHop < HopSamples)
+                {
+                    // Part of a hop. Nothing to analyse yet; the rest will
+                    // arrive in the next buffer.
+                    break;
+                }
+
+                _samplesSinceHop = 0;
+                AnalyseOneHop(HopSamples * secondsPerSample);
+            }
+
+            return Level.Update(rms, peak, deltaSeconds, _latestBands, BuildBeatInfo());
+        }
+
+        /// <summary>
+        /// Analyses the most recent window of audio and moves the beat detection
+        /// chain on by one step.
+        ///
+        /// WHY THIS IS SEPARATE FROM THE BUFFER
+        ///
+        /// It used to be the same thing: one analysis per buffer Windows handed
+        /// over. That tied the whole beat detection chain to a rate nobody
+        /// chose, and measuring real capture showed the rate was 19.6 a second -
+        /// not the ~100 every comment in OnsetDetector assumed. Two things
+        /// followed.
+        ///
+        /// Every time constant meant five times what it said. And worse, the
+        /// transform window is 1024 samples while a buffer was about 2445, so
+        /// writing a whole buffer into a 1024-sample ring overwrote it twice
+        /// over: 58% of the audio was never transformed at all. Measured, that
+        /// costs nothing on a kick drum - low frequency energy lasts long enough
+        /// to survive into the next window - but 20% of snare and hi-hat onsets
+        /// and over half of very sharp ones, because a short transient landing
+        /// in the discarded stretch is simply never seen.
+        ///
+        /// Analysis now happens every HopSamples regardless of how the buffers
+        /// happen to arrive, which is the ordinary way to run a short-time
+        /// transform: successive windows overlap rather than leaving gaps.
+        /// </summary>
+        private void AnalyseOneHop(double hopSeconds)
+        {
+            _latestBands = Spectrum.Analyse(hopSeconds);
 
             // The automatic sensitivity tuner needs to know how fast the music is
             // before it can know how many detections a second to aim for. Handed
@@ -195,10 +303,7 @@ namespace LightWall.Core.Audio
             }
 
             Tempo.Update(_elapsedSeconds);
-            AdvanceClock(deltaSeconds, beatHeard);
-
-            AudioFeatures features =
-                Level.Update(rms, peak, deltaSeconds, bands, BuildBeatInfo());
+            AdvanceClock(hopSeconds, beatHeard);
 
             // Written down last, once everything for this reading has settled,
             // so a recorded row is a coherent picture of one moment rather than
@@ -207,10 +312,10 @@ namespace LightWall.Core.Audio
             Recorder?.Record(
                 _elapsedSeconds,
                 audioPresent: true,
-                rms,
-                peak,
+                rms: 0.0,
+                peak: 0.0,
                 Spectrum.GetRawStrengths(),
-                bands,
+                _latestBands,
                 Onsets.CurrentFlux,
                 Onsets.CurrentThreshold,
                 Onsets.TriggerRatio,
@@ -220,8 +325,6 @@ namespace LightWall.Core.Audio
                 Tempo.Confidence,
                 Tempo.Trust,
                 Clock.Phase);
-
-            return features;
         }
 
         /// <summary>
@@ -257,7 +360,8 @@ namespace LightWall.Core.Audio
         {
             _elapsedSeconds += deltaSeconds;
 
-            double[] bands = Spectrum.AnalyseSilence(deltaSeconds);
+            _latestBands = Spectrum.AnalyseSilence(deltaSeconds);
+            double[] bands = _latestBands;
 
             Tempo.Update(_elapsedSeconds);
 
@@ -334,6 +438,8 @@ namespace LightWall.Core.Audio
             _elapsedSeconds = 0.0;
             _lastBeatSeconds = double.NegativeInfinity;
             _beatCount = 0;
+            _samplesSinceHop = 0;
+            _latestBands = new double[FrequencyBands.Count];
             _lastPulseSeconds = double.NegativeInfinity;
             _previousPulseCount = 0;
         }

@@ -36,12 +36,12 @@ namespace LightWall.Tests
         /// <summary>
         /// Plays a steady beat through an analyser, optionally recording it.
         /// </summary>
-        private static AudioAnalyser PlayBeat(double seconds, AnalysisRecorder? recorder = null)
+        private static AudioAnalyser PlayBeat(
+            double seconds, AnalysisRecorder? recorder = null, double bufferSeconds = 0.01)
         {
             var analyser = new AudioAnalyser(SampleRate) { Recorder = recorder };
             var random = new Random(4242);
 
-            const double bufferSeconds = 0.01;
             int bufferSamples = (int)(SampleRate * bufferSeconds);
             double elapsed = 0.0;
 
@@ -73,20 +73,43 @@ namespace LightWall.Tests
             Assert.Equal(0, recorder.ReadingCount);
         }
 
+        /// <summary>
+        /// Readings arrive once per ANALYSIS, not once per buffer.
+        ///
+        /// This test used to demand one per buffer, and that stopped being the
+        /// right answer when analysis was decoupled from the sound card's buffer
+        /// size. Analysis now runs every 512 samples whatever the buffers do -
+        /// about 94 times a second at 48 kHz - so two seconds of audio is about
+        /// 188 readings however it was delivered.
+        ///
+        /// The buffer-independence is the point of the whole change, so it is
+        /// checked directly: the same two seconds fed as 10 ms buffers and as
+        /// 50 ms buffers has to record the same amount.
+        /// </summary>
         [Fact]
-        public void RecordingCapturesOneReadingPerBuffer()
+        public void RecordingCapturesOneReadingPerAnalysisWhateverTheBufferSize()
         {
-            var recorder = new AnalysisRecorder();
-            recorder.Start();
+            var fromSmallBuffers = new AnalysisRecorder();
+            fromSmallBuffers.Start();
+            PlayBeat(2.0, fromSmallBuffers, bufferSeconds: 0.01);
+            fromSmallBuffers.Stop();
 
-            PlayBeat(2.0, recorder);
-            recorder.Stop();
+            var fromLargeBuffers = new AnalysisRecorder();
+            fromLargeBuffers.Start();
+            PlayBeat(2.0, fromLargeBuffers, bufferSeconds: 0.05);
+            fromLargeBuffers.Stop();
 
-            // Two seconds of 0.01 s buffers. Allow a little slack rather than
-            // demanding exactly 200, since the loop's floating-point accumulator
-            // decides how many iterations it gets.
-            Assert.InRange(recorder.ReadingCount, 195, 205);
-            Assert.InRange(recorder.SecondsRecorded, 1.9, 2.1);
+            // 48000 / 512 is 93.75 analyses a second, so two seconds is ~188.
+            Assert.InRange(fromSmallBuffers.ReadingCount, 180, 195);
+            Assert.InRange(fromLargeBuffers.ReadingCount, 180, 195);
+
+            Assert.InRange(fromSmallBuffers.SecondsRecorded, 1.85, 2.05);
+
+            // The decisive part. Before analysis was decoupled from the buffer,
+            // these two would have differed by a factor of five.
+            Assert.InRange(
+                Math.Abs(fromSmallBuffers.ReadingCount - fromLargeBuffers.ReadingCount),
+                0, 5);
         }
 
         [Fact]

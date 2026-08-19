@@ -235,15 +235,40 @@ namespace LightWall.Core.Audio
         ///     4.0      10/11          15.3
         ///     5.0      11/11          16.9
         ///
-        /// 3.5 is the fastest to settle, and matches what the owner arrived at
-        /// by ear - the tuner was consistently walking down from 5 towards it.
+        /// 3.5 was the fastest to settle on that evidence, and matched what the
+        /// owner arrived at by ear - the tuner was consistently walking down
+        /// from 5 towards it.
         ///
-        /// The honest caveat: 5.0 locks one more recording than 3.5, and across
-        /// eleven takes of four songs a single track is well inside the noise.
-        /// The landscape is genuinely rough - see the note on AutoResponse - so
-        /// treat this as the best available answer rather than an optimum.
+        /// AND THEN IT WENT BACK TO 5, WHICH IS THE INTERESTING PART
+        ///
+        /// Both of those measurements - the original synthetic sweep and the
+        /// later one against real recordings - were taken while the analyser was
+        /// running at 19.6 readings a second instead of the ~94 it was designed
+        /// for, because analysis was tied to the sound card's buffer size. See
+        /// AudioAnalyser.AnalyseOneHop.
+        ///
+        /// At that rate the transform windows did not overlap; they had gaps
+        /// between them. Flux measured between disjoint windows is larger and
+        /// spikier than flux measured between overlapping ones, so the spread it
+        /// is compared against was wider, and a smaller multiple of that spread
+        /// was enough. 3.5 was a correct answer to a broken question.
+        ///
+        /// Swept again once the rate was fixed, on the same three synthetic
+        /// tracks, reading BPM and confidence on each:
+        ///
+        ///   setting     sparse        moderate        dense
+        ///     3.5     120 / 100%    120 /  88%    120 /  72%
+        ///     5.0     120 / 100%    120 /  94%    120 /  94%
+        ///     7.0     120 / 100%    120 / 100%    120 / 100%
+        ///
+        /// So it returns to 5.0, where it began. 7.0 scores better still on this
+        /// material, and is deliberately not taken: three synthetic textures are
+        /// exactly the evidence that produced the original over-confident 5, and
+        /// choosing an even tighter setting on the same narrow basis would be
+        /// repeating the mistake rather than learning from it. 5.0 wants
+        /// confirming against real music recorded at the corrected rate.
         /// </summary>
-        public double Sensitivity { get; set; } = 3.5;
+        public double Sensitivity { get; set; } = 5.0;
 
         /// <summary>
         /// The shortest gap allowed between two beats, in seconds.
@@ -505,6 +530,35 @@ namespace LightWall.Core.Audio
         private const double AutoResponse = 0.5;
 
         /// <summary>
+        /// The same, for tightening, which needs a much stronger one.
+        ///
+        /// WHY THE TWO DIRECTIONS ARE NOT SYMMETRIC - AND WHY THE OBVIOUS
+        /// SETTING WAS BACKWARDS
+        ///
+        /// Both directions used the same exponent, with a comment claiming
+        /// tightening was the brisker of the two. In practice it was far slower,
+        /// and the reason is in the data rather than the constants.
+        ///
+        /// Under-detection is unbounded: a window can find a tenth of what it
+        /// should, so the ratio driving the step can be 0.1 and the step lands
+        /// on its floor. Over-detection cannot do the same, because
+        /// MinimumSecondsBetweenBeats caps the rate at five a second - so
+        /// against an upper bound of 3.5 the ratio can never exceed about 1.4,
+        /// and its square root never exceeds about 1.2.
+        ///
+        /// Measured: a dense track started at the loosest setting the tuner
+        /// allows found 3.73 detections a second against a band topping out at
+        /// 3.5. Six percent over, so a three percent step - and at that pace it
+        /// needed over two minutes to climb back into range, by which time the
+        /// tempo had settled on 76 for a 120 BPM track and stayed there.
+        ///
+        /// A steeper exponent for tightening restores the intent. The same six
+        /// percent excess now moves fourteen percent, and the same track climbs
+        /// back inside about forty seconds.
+        /// </summary>
+        private const double AutoTightenResponse = 2.0;
+
+        /// <summary>
         /// The largest single step, as a multiplier, in each direction.
         ///
         /// Bounded so that one strange window - a sudden silence, a track
@@ -726,7 +780,7 @@ namespace LightWall.Core.Audio
                     // Finding too much. How much too much decides the step.
                     double excess = perSecond / most;
                     double step = Math.Min(
-                        Math.Pow(excess, AutoResponse), AutoLargestTightenStep);
+                        Math.Pow(excess, AutoTightenResponse), AutoLargestTightenStep);
 
                     // Scaled back toward "leave it alone" when the window is thin.
                     step = 1.0 + ((step - 1.0) * evidence);
