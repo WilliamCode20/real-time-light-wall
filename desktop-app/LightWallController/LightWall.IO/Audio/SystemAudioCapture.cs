@@ -88,6 +88,19 @@ namespace LightWall.IO.Audio
         /// <summary>When the last buffer arrived, in seconds on _clock.</summary>
         private double _lastBufferSeconds;
 
+        /// <summary>
+        /// Wires the recorder to the analyser.
+        ///
+        /// Done once here rather than each time capture starts, because the
+        /// recorder is meant to survive stopping and starting the audio - a
+        /// recording interrupted by pausing the music should not be thrown away.
+        /// Analyser.Reset does not clear it either, for the same reason.
+        /// </summary>
+        public SystemAudioCapture()
+        {
+            _analyser.Recorder = Recorder;
+        }
+
         /// <inheritdoc />
         public string Name { get; private set; } = "System audio";
 
@@ -225,6 +238,16 @@ namespace LightWall.IO.Audio
         /// clearest way to tell the adjustment is doing something.
         /// </summary>
         public double GainReference => _analyser.GainReference;
+
+        /// <summary>
+        /// Writes every analysis reading down, for studying a real track
+        /// afterwards rather than only watching it live. See AnalysisRecorder.
+        ///
+        /// Created here and left attached permanently, since it does nothing at
+        /// all until asked to start. Survives Start and Stop of capture, so a
+        /// recording is not lost by pausing.
+        /// </summary>
+        public AnalysisRecorder Recorder { get; } = new();
 
         /// <summary>
         /// Starts listening to the default playback device.

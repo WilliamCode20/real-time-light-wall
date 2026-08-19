@@ -59,6 +59,20 @@ namespace LightWall.Core.Audio
         /// </summary>
         public BeatClock Clock { get; } = new();
 
+        /// <summary>
+        /// Writes every reading down for study afterwards, or null for the
+        /// normal case of not recording.
+        ///
+        /// Attached from outside rather than owned here, because whether to
+        /// record is a question for whoever is running the app, not for the
+        /// analyser. Left null this costs one null check per buffer.
+        ///
+        /// See AnalysisRecorder for why a recording of the band strengths is a
+        /// complete record of what the beat detector had to work with, rather
+        /// than a summary of it.
+        /// </summary>
+        public AnalysisRecorder? Recorder { get; set; }
+
         /// <summary>When the metronome last struck.</summary>
         private double _lastPulseSeconds = double.NegativeInfinity;
 
@@ -166,7 +180,31 @@ namespace LightWall.Core.Audio
             Tempo.Update(_elapsedSeconds);
             AdvanceClock(deltaSeconds, beatHeard);
 
-            return Level.Update(rms, peak, deltaSeconds, bands, BuildBeatInfo());
+            AudioFeatures features =
+                Level.Update(rms, peak, deltaSeconds, bands, BuildBeatInfo());
+
+            // Written down last, once everything for this reading has settled,
+            // so a recorded row is a coherent picture of one moment rather than
+            // a mixture of this reading and the previous one. Costs nothing when
+            // nothing is recording. See AnalysisRecorder.
+            Recorder?.Record(
+                _elapsedSeconds,
+                audioPresent: true,
+                rms,
+                peak,
+                Spectrum.GetRawStrengths(),
+                bands,
+                Onsets.CurrentFlux,
+                Onsets.CurrentThreshold,
+                Onsets.TriggerRatio,
+                beatHeard,
+                Onsets.Sensitivity,
+                Tempo.Bpm,
+                Tempo.Confidence,
+                Tempo.Trust,
+                Clock.Phase);
+
+            return features;
         }
 
         /// <summary>
@@ -211,7 +249,35 @@ namespace LightWall.Core.Audio
             // should still pulse in time.
             AdvanceClock(deltaSeconds, beatHeard: false);
 
-            return Level.UpdateSilent(deltaSeconds, bands, BuildBeatInfo());
+            AudioFeatures features =
+                Level.UpdateSilent(deltaSeconds, bands, BuildBeatInfo());
+
+            // Silence is recorded too, rather than left as a gap in the file.
+            // A gap and a quiet passage look identical afterwards and mean
+            // completely different things - one is the music, the other is the
+            // recording having missed something.
+            //
+            // The raw strengths are whatever the last real buffer left behind,
+            // since nothing new arrived to replace them. That is honest: no
+            // measurement was taken, and the "audio" column says so.
+            Recorder?.Record(
+                _elapsedSeconds,
+                audioPresent: false,
+                rms: 0.0,
+                peak: 0.0,
+                Spectrum.GetRawStrengths(),
+                bands,
+                Onsets.CurrentFlux,
+                Onsets.CurrentThreshold,
+                Onsets.TriggerRatio,
+                beatDetected: false,
+                Onsets.Sensitivity,
+                Tempo.Bpm,
+                Tempo.Confidence,
+                Tempo.Trust,
+                Clock.Phase);
+
+            return features;
         }
 
         /// <summary>

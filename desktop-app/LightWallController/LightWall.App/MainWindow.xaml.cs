@@ -1,4 +1,5 @@
 using System.Diagnostics;
+
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -765,6 +766,7 @@ namespace LightWall.App
 
             UpdateOutputStatsText();
             UpdateSerialStatusText();
+            UpdateRecordStatusText();
         }
 
         /// <summary>
@@ -1178,6 +1180,136 @@ namespace LightWall.App
             }
 
             BeatSensitivitySlider.Value = chosen;
+        }
+
+        /// <summary>
+        /// Begins recording the analysis to memory.
+        ///
+        /// Nothing is written to disk until recording stops. That keeps the
+        /// audio thread free of file work entirely - see AnalysisRecorder for
+        /// why that matters - and means a recording can be abandoned without
+        /// leaving a file behind.
+        /// </summary>
+        private void RecordStartButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audio.Recorder.Start();
+
+            RecordStartButton.IsEnabled = false;
+            RecordMarkButton.IsEnabled = true;
+            RecordStopButton.IsEnabled = true;
+
+            UpdateRecordStatusText();
+        }
+
+        /// <summary>
+        /// Flags this moment in the recording.
+        /// </summary>
+        private void RecordMarkButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audio.Recorder.Mark();
+            UpdateRecordStatusText();
+        }
+
+        /// <summary>
+        /// Stops recording and writes the file.
+        ///
+        /// Saved into Documents rather than beside the program, because the
+        /// program may well be running from a Downloads folder or somewhere
+        /// read-only, and because somebody who has just recorded something needs
+        /// to be able to find it without being told where to look. The full path
+        /// goes into the readout for the same reason.
+        /// </summary>
+        private void RecordStopButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audio.Recorder.Stop();
+
+            RecordStartButton.IsEnabled = true;
+            RecordMarkButton.IsEnabled = false;
+            RecordStopButton.IsEnabled = false;
+
+            if (_audio.Recorder.ReadingCount == 0)
+            {
+                RecordStatusTextBlock.Text =
+                    "Nothing was recorded. Start audio capture first — the recorder " +
+                    "only has something to write down while the analyser is running.";
+                return;
+            }
+
+            try
+            {
+                // Fully qualified because this file also uses System.Windows.Shapes
+                // for the meter bars, and both namespaces define a Path.
+                string folder = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "LightWall");
+
+                System.IO.Directory.CreateDirectory(folder);
+
+                // The time is in the name so that recording several takes of the
+                // same track does not silently overwrite the earlier ones.
+                string fileName = $"analysis-{DateTime.Now:yyyy-MM-dd-HHmmss}.csv";
+                string fullPath = System.IO.Path.Combine(folder, fileName);
+
+                System.IO.File.WriteAllText(fullPath, _audio.Recorder.ToCsv());
+
+                RecordStatusTextBlock.Text =
+                    $"Saved {_audio.Recorder.ReadingCount} readings " +
+                    $"({_audio.Recorder.SecondsRecorded:F1} s, " +
+                    $"{_audio.Recorder.MarkCount} marks){Environment.NewLine}{fullPath}";
+
+                // Released now the file is safely written, so a long session does
+                // not sit on the memory until the app closes.
+                _audio.Recorder.Clear();
+            }
+            catch (Exception ex)
+            {
+                // Keep whatever was recorded rather than clearing it, so a
+                // failure to write - a full disk, a locked folder - can be tried
+                // again rather than losing the take.
+                RecordStatusTextBlock.Text =
+                    $"Could not save the recording.{Environment.NewLine}{ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// Describes what the recorder is doing.
+        ///
+        /// Refreshed on the slower statistics schedule rather than every frame:
+        /// a count climbing a hundred times a second is unreadable, and there is
+        /// nothing here that needs to look continuous the way a level meter does.
+        /// </summary>
+        private void UpdateRecordStatusText()
+        {
+            AnalysisRecorder recorder = _audio.Recorder;
+
+            if (!recorder.IsRecording)
+            {
+                // Leave whatever the last save or failure said on screen. Only
+                // overwrite it when there is genuinely nothing to report, or the
+                // path just written would vanish a quarter of a second later.
+                if (recorder.ReadingCount == 0 && !recorder.ReachedLimit)
+                {
+                    return;
+                }
+
+                if (recorder.ReachedLimit)
+                {
+                    RecordStatusTextBlock.Text =
+                        $"Recording stopped — ran out of room at " +
+                        $"{recorder.ReadingCount} readings. Press Stop and save to keep it.";
+                }
+
+                return;
+            }
+
+            string listening = _audio.IsRunning
+                ? string.Empty
+                : "   [audio capture is not running — nothing to record]";
+
+            RecordStatusTextBlock.Text =
+                $"Recording: {recorder.ReadingCount} readings, " +
+                $"{recorder.SecondsRecorded:F1} s, " +
+                $"{recorder.MarkCount} marks{listening}";
         }
 
         /// <summary>
