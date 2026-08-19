@@ -177,6 +177,11 @@ namespace LightWall.Core.Audio
             // wrong answer.
             Onsets.TempoHintBpm = Tempo.Bpm;
 
+            // Which point in the beat we are at, so the band weighting can ask
+            // which bands keep arriving at the same one. See BandBeatAgreement.
+            Onsets.BeatPhaseHint = Clock.Phase;
+            Onsets.TempoConfidenceHint = Tempo.Confidence;
+
             // Beat detection works from the RAW band strengths, not the smoothed
             // ones. Smoothing rounds off exactly the sharp rise an onset
             // consists of.

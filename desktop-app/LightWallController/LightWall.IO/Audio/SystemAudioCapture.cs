@@ -160,8 +160,9 @@ namespace LightWall.IO.Audio
         ///
         /// A COUNT OF DEVIATIONS, NOT A MULTIPLIER. It used to be a multiplier
         /// on the average flux and ran from about 1 to 3; it is now added to the
-        /// middle reading instead, so the old numbers mean nothing here and the
-        /// default moved from 1.7 to 5. See OnsetDetector.ComputeThreshold.
+        /// middle reading instead, so the old numbers mean nothing here. The
+        /// default has since settled at 3.5, measured against real recordings.
+        /// See OnsetDetector.ComputeThreshold and OnsetDetector.Sensitivity.
         ///
         /// Higher finds only the obvious hits; lower finds more, and eventually
         /// starts reporting ordinary texture as beats. This is what the Beat
@@ -177,6 +178,16 @@ namespace LightWall.IO.Audio
         {
             get => _analyser.Onsets.Sensitivity;
             set => _analyser.Onsets.Sensitivity = value;
+        }
+
+        /// <summary>
+        /// Whether the detector leans harder on the frequency bands that are
+        /// carrying the beat. See OnsetDetector.UseBandWeighting.
+        /// </summary>
+        public bool UseBandWeighting
+        {
+            get => _analyser.Onsets.UseBandWeighting;
+            set => _analyser.Onsets.UseBandWeighting = value;
         }
 
         /// <summary>

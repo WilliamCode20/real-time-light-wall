@@ -1313,6 +1313,24 @@ namespace LightWall.App
         }
 
         /// <summary>
+        /// Runs when the band weighting tick-box is changed.
+        ///
+        /// Takes effect on the very next audio buffer, so the difference can be
+        /// judged by ear against a track that is already playing - which is the
+        /// only way a change this size can honestly be judged.
+        /// </summary>
+        private void BandWeightingCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            // WPF raises this while the window is still being built.
+            if (_audio is null)
+            {
+                return;
+            }
+
+            _audio.UseBandWeighting = BandWeightingCheckBox.IsChecked == true;
+        }
+
+        /// <summary>
         /// Runs whenever the beat gap slider moves.
         /// </summary>
         private void BeatGapSlider_ValueChanged(

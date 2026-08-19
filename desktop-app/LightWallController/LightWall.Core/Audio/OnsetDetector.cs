@@ -125,8 +125,54 @@ namespace LightWall.Core.Audio
         /// <summary>How many of those fell inside the window last time it was gathered.</summary>
         private int _windowCount;
 
+        /// <summary>When the band weighting last had a reading to study.</summary>
+        private double _lastBandWeightSeconds;
+
         /// <summary>The band strengths from the previous reading.</summary>
         private double[] _previousBands = new double[FrequencyBands.Count];
+
+        /// <summary>
+        /// How much each band grew on the latest reading, before weighting.
+        ///
+        /// Reused rather than made fresh, for the same reason as the sorting
+        /// space above: this runs on the audio thread and must not hand the
+        /// garbage collector work it does not have to do.
+        /// </summary>
+        private readonly double[] _bandFlux = new double[FrequencyBands.Count];
+
+        /// <summary>
+        /// Which bands are actually carrying the beat, so the ones that are not
+        /// can be leaned on less. See BandBeatAgreement, which carries the
+        /// measurements this was built from.
+        ///
+        /// Owned here rather than passed in, because it is part of how this
+        /// detector reads flux rather than something anyone else has an opinion
+        /// about. It needs two things from outside - the tempo and the beat
+        /// phase - and both arrive as hints, so it costs nothing when they are
+        /// unavailable: with no tempo it weights every band equally, which is
+        /// exactly what this class did before it existed.
+        /// </summary>
+        public BandBeatAgreement BandAgreement { get; } = new();
+
+        /// <summary>
+        /// Whether to lean harder on the bands that are carrying the beat.
+        ///
+        /// On by default. Kept switchable because it is the sort of change best
+        /// judged by ear against real music, and being able to turn it off while
+        /// a track plays is worth more than the one line it costs.
+        /// </summary>
+        public bool UseBandWeighting { get; set; } = true;
+
+        /// <summary>
+        /// How sure the tempo estimate has to be before band weighting is used
+        /// at all.
+        ///
+        /// Half the recent sounds landing on the beat is the same bar
+        /// TempoEstimator uses before it will let agreement build trust, and for
+        /// the same reason: below it the answer is not good enough to reason
+        /// from. See TempoConfidenceHint.
+        /// </summary>
+        private const double ConfidenceToWeighBands = 0.5;
 
         /// <summary>The flux from the previous reading, for peak-picking.</summary>
         private double _previousFlux;
@@ -317,6 +363,47 @@ namespace LightWall.Core.Audio
         /// floor, never fewer.
         /// </summary>
         public double TempoHintBpm { get; set; }
+
+        /// <summary>
+        /// How far through the current beat the metronome thinks we are, from 0
+        /// to 1, or anything at all when no tempo is known.
+        ///
+        /// Set from outside on every reading, alongside TempoHintBpm. Only
+        /// BandBeatAgreement uses it, and only to ask which bands keep arriving
+        /// at the same point in the beat.
+        ///
+        /// A property rather than an argument to Update, so that anything
+        /// replaying a recording can drive the detector from the columns
+        /// AnalysisRecorder already writes - the phase is one of them.
+        /// </summary>
+        public double BeatPhaseHint { get; set; }
+
+        /// <summary>
+        /// How much of what is being heard lands on the beat, from 0 to 1, as
+        /// judged by the tempo estimator.
+        ///
+        /// WHY THE BAND WEIGHTING WAITS FOR THIS
+        ///
+        /// Band weighting asks which bands keep arriving at the same point in
+        /// the beat, and that question is only worth asking if we know where the
+        /// beat is. Measured with no such gate, it made things clearly worse -
+        /// mean time to settle across eleven real recordings went from 15.6 s to
+        /// 18.8 s.
+        ///
+        /// The reason is a loop. The phase comes from the metronome, the
+        /// metronome runs at the estimated tempo, and early in a track that
+        /// estimate is usually wrong. Agreement measured against a wrong beat
+        /// promotes whichever bands happen to fit the wrong beat, which makes
+        /// the wrong answer harder to leave. On one recording the sub band -
+        /// which against the true tempo scores 0.98, essentially perfect - was
+        /// measured at 0.08 and weighted DOWN, while a mid band was promoted.
+        ///
+        /// So the weighting stays out of the way until the estimate has earned
+        /// some credibility, and until then every band keeps an equal share.
+        /// That also matches what this was built for: carrying the beat through
+        /// a break, which is a thing that happens to an already-settled tempo.
+        /// </summary>
+        public double TempoConfidenceHint { get; set; }
 
         /// <summary>
         /// The fewest detections a second that counts as healthy, whatever the
@@ -569,6 +656,7 @@ namespace LightWall.Core.Audio
             }
 
             KeepSensitivityWorkable(nowSeconds);
+            UpdateBandWeights(nowSeconds);
 
             return isBeat;
         }
@@ -671,6 +759,45 @@ namespace LightWall.Core.Audio
         }
 
         /// <summary>
+        /// Lets the band weighting study the reading that has just been judged.
+        ///
+        /// AFTER the judgement, deliberately. This reading was weighed using the
+        /// weights as they stood before it arrived, and only then does it get a
+        /// say in what they become. Letting a reading influence the weights that
+        /// were about to judge it would let a loud band talk itself up and then
+        /// be believed on its own recommendation, within a single reading.
+        ///
+        /// Nothing happens at all until a tempo exists, because "which point in
+        /// the beat did this arrive at" is a question with no meaning until
+        /// there is a beat. Until then every band keeps an equal share and the
+        /// detector behaves exactly as it did before any of this.
+        /// </summary>
+        private void UpdateBandWeights(double nowSeconds)
+        {
+            // Gated on the tempo being credible as well as present. See
+            // TempoConfidenceHint for the loop this avoids, and the measurement
+            // showing what happens without it.
+            if (!UseBandWeighting
+                || TempoHintBpm <= 0.0
+                || TempoConfidenceHint < ConfidenceToWeighBands)
+            {
+                BandAgreement.Forget();
+                _lastBandWeightSeconds = nowSeconds;
+                return;
+            }
+
+            double elapsed = nowSeconds - _lastBandWeightSeconds;
+            _lastBandWeightSeconds = nowSeconds;
+
+            if (elapsed <= 0.0)
+            {
+                return;
+            }
+
+            BandAgreement.Observe(_bandFlux, BeatPhaseHint, elapsed);
+        }
+
+        /// <summary>
         /// How many detections a second currently count as healthy.
         ///
         /// HOW THE TEMPO IS USED, AND HOW IT IS PREVENTED FROM DOING HARM
@@ -733,6 +860,10 @@ namespace LightWall.Core.Audio
             _previousFlux = 0.0;
             _lastBeatSeconds = double.NegativeInfinity;
             TempoHintBpm = 0.0;
+            BeatPhaseHint = 0.0;
+            BandAgreement.Forget();
+            _lastBandWeightSeconds = 0.0;
+            Array.Clear(_bandFlux);
 
             CurrentFlux = 0.0;
             CurrentThreshold = 0.0;
@@ -797,10 +928,21 @@ namespace LightWall.Core.Audio
                 // Only growth counts. A sound ending is not a sound starting,
                 // and counting it would report a second beat at the end of every
                 // note.
-                if (change > 0.0)
+                if (change < 0.0)
                 {
-                    flux += change;
+                    change = 0.0;
                 }
+
+                // Kept per band as well as summed, because the two want different
+                // things: the sum is what decides whether this reading is a beat,
+                // and the individual figures are what BandAgreement studies to
+                // decide how much each band should have been worth. It watches
+                // the RAW growth rather than the weighted version, so that a band
+                // currently weighted down can still show it has started carrying
+                // the beat and earn its way back up.
+                _bandFlux[band] = change;
+
+                flux += change * BandAgreement.GetWeight(band);
 
                 _previousBands[band] = bandStrengths[band];
             }

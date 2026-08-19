@@ -797,6 +797,25 @@
                 </Grid>
 
                 <!--
+                    Leaning on the bands that are carrying the beat.
+
+                    Offered as a switch because it is the sort of change only a
+                    listen can settle. Measured across eleven recordings it is a
+                    small win - a little quicker to settle and a little better at
+                    staying settled - which is exactly the size of difference
+                    that is easier to hear than to prove.
+                -->
+                <CheckBox x:Name="BandWeightingCheckBox"
+                          Content="Follow the bands carrying the beat"
+                          IsChecked="True"
+                          Foreground="#DDDDDD"
+                          FontSize="13"
+                          Margin="0,2,0,10"
+                          ToolTip="Leans on the frequency bands whose hits keep landing on the beat, and less on the ones that do not. Turn off to weigh every band equally."
+                          Checked="BandWeightingCheckBox_Changed"
+                          Unchecked="BandWeightingCheckBox_Changed"/>
+
+                <!--
                     The trigger meter.
 
                     The bar is how close the sound is right now to being counted
