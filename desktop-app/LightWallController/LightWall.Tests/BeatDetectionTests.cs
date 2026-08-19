@@ -1173,6 +1173,50 @@ namespace LightWall.Tests
         }
 
         /// <summary>
+        /// THE START OF A TRACK MUST NOT THROW THE SETTING THROUGH ITS RANGE.
+        ///
+        /// The first judging window of a song usually catches an intro rather
+        /// than the song: a few sparse hits, no tempo worked out yet. Under a
+        /// purely proportional response that window shows the largest possible
+        /// shortfall and therefore takes the largest possible step - the biggest
+        /// move made on the least evidence.
+        ///
+        /// Measured on two real recordings, both of which did exactly that. The
+        /// first window found three detections on one track and five on the
+        /// other, and each dropped the setting from 5.0 to around 3 in a single
+        /// step, straight through the range that would have worked. Both then
+        /// sat at the wrong tempo for over half a minute. The same tracks
+        /// started deliberately far too tight recovered FASTER, because no
+        /// single window there was extreme enough to trigger one enormous step.
+        ///
+        /// A thin window must still move in the right direction - it just must
+        /// not leap.
+        /// </summary>
+        [Fact]
+        public void ASparseOpeningDoesNotThrowTheSettingThroughItsRange()
+        {
+            var detector = new OnsetDetector { AutoSensitivity = true, Sensitivity = 5.0 };
+
+            // One judging window of a sparse intro: hits well apart, so very few
+            // detections, and no tempo established.
+            double after = DriveDetector(detector, 0.85, 4.5, tempoHintBpm: 0.0);
+
+            Assert.True(
+                after < 5.0,
+                $"It should still have loosened - a sparse opening is evidence of " +
+                $"something, just not much - but it sat at {after:F2}.");
+
+            // The undamped response would take the largest allowed step and land
+            // near 3.0. Anything that low off one thin window is the fault this
+            // guards against.
+            Assert.True(
+                after > 4.0,
+                $"One window of a sparse intro dropped the setting to {after:F2}. " +
+                "That is a leap made on almost no evidence, and on real recordings " +
+                "it lands below the range that would have worked.");
+        }
+
+        /// <summary>
         /// A big shortfall has to move further than a small one.
         ///
         /// The step used to be a flat 7% however wrong things were, so the time

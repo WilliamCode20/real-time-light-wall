@@ -165,10 +165,39 @@ namespace LightWall.Core.Audio
         /// nearly every song.
         ///
         /// Synthetic material only, though. Real music has structure that white
-        /// noise does not, so this is a well-founded starting point rather than
-        /// a settled answer - it still wants dialling in by ear.
+        /// noise does not, so that was a well-founded starting point rather than
+        /// a settled answer.
+        ///
+        /// IT HAS SINCE BEEN SETTLED BY REAL MUSIC, AND IT MOVED TO 3.5
+        ///
+        /// Two things made 5 the wrong answer once they were measured.
+        ///
+        /// The sweep above ran against the OLD threshold window, which was a
+        /// count of 48 readings. In the tests, at the 10 ms buffers they feed,
+        /// that came to about half a second; on real capture at 50 ms buffers it
+        /// came to 2.45 seconds. So the setting was chosen against a window five
+        /// times shorter than the one it would meet in practice, and a longer
+        /// window wants a smaller multiplier. HistorySeconds now fixes the window
+        /// at 0.9 s whatever the buffer size, which changes what suits it.
+        ///
+        /// Replaying eleven recordings of four real tracks with their true
+        /// tempos known, at fixed settings from 2.5 to 6:
+        ///
+        ///   setting   locked   mean seconds to lock
+        ///     3.0      10/11          15.8
+        ///     3.5      10/11          13.7
+        ///     4.0      10/11          15.3
+        ///     5.0      11/11          16.9
+        ///
+        /// 3.5 is the fastest to settle, and matches what the owner arrived at
+        /// by ear - the tuner was consistently walking down from 5 towards it.
+        ///
+        /// The honest caveat: 5.0 locks one more recording than 3.5, and across
+        /// eleven takes of four songs a single track is well inside the noise.
+        /// The landscape is genuinely rough - see the note on AutoResponse - so
+        /// treat this as the best available answer rather than an optimum.
         /// </summary>
-        public double Sensitivity { get; set; } = 5.0;
+        public double Sensitivity { get; set; } = 3.5;
 
         /// <summary>
         /// The shortest gap allowed between two beats, in seconds.
@@ -403,6 +432,37 @@ namespace LightWall.Core.Audio
         private const double AutoLargestLoosenStep = 0.6;
 
         /// <summary>
+        /// How many detections a judging window needs before its verdict is
+        /// acted on at full strength.
+        ///
+        /// THE STEP USED TO BE LARGEST EXACTLY WHERE THE EVIDENCE WAS WEAKEST.
+        ///
+        /// A window that found almost nothing produces the biggest shortfall and
+        /// therefore, under a purely proportional response, the biggest step -
+        /// but "almost nothing" is also the thinnest possible evidence. Those
+        /// two pull in opposite directions and the proportional part was winning.
+        ///
+        /// Measured on real recordings. On two separate tracks the FIRST judging
+        /// window of the song caught nothing but the intro - three detections on
+        /// one, five on the other, with no tempo established yet - and each took
+        /// a near-maximum step that dropped the setting straight through the
+        /// useful range: 5.00 to 3.05 on one, 5.00 to 3.56 on the other. Both
+        /// then sat at the wrong tempo for over half a minute. The same tracks
+        /// started deliberately far too tight at 11 recovered FASTER, because
+        /// nothing there had a shortfall extreme enough to trigger a single
+        /// enormous step and they walked down in several moderate ones instead.
+        ///
+        /// So a verdict is now scaled by how much it is based on. A thin window
+        /// still moves in the right direction, just not far, and a second window
+        /// agreeing moves it further. That is ordinary measurement practice - a
+        /// small sample should move a belief less - and it costs nothing when
+        /// the music is playing properly, because then the window is full.
+        ///
+        /// Eight is about one window's worth at the floor rate of two a second.
+        /// </summary>
+        private const double AutoDetectionsForFullStep = 8.0;
+
+        /// <summary>
         /// The range automatic adjustment will not leave.
         ///
         /// AutoHighest MUST MATCH the Beat size slider's Maximum in
@@ -567,12 +627,21 @@ namespace LightWall.Core.Audio
 
                 (double fewest, double most) = HealthyRange();
 
+                // How much this window's verdict is worth. A window that saw
+                // almost nothing has almost nothing to say, however extreme the
+                // shortfall it appears to show. See AutoDetectionsForFullStep.
+                double evidence = Math.Min(
+                    1.0, _detectionsThisWindow / AutoDetectionsForFullStep);
+
                 if (perSecond > most)
                 {
                     // Finding too much. How much too much decides the step.
                     double excess = perSecond / most;
                     double step = Math.Min(
                         Math.Pow(excess, AutoResponse), AutoLargestTightenStep);
+
+                    // Scaled back toward "leave it alone" when the window is thin.
+                    step = 1.0 + ((step - 1.0) * evidence);
 
                     Sensitivity = Math.Min(Sensitivity * step, AutoHighest);
                 }
@@ -585,6 +654,13 @@ namespace LightWall.Core.Audio
                     double shortfall = Math.Max(perSecond, 0.05) / fewest;
                     double step = Math.Max(
                         Math.Pow(shortfall, AutoResponse), AutoLargestLoosenStep);
+
+                    // Scaled back toward "leave it alone" when the window is thin.
+                    // This is the half that matters: a window finding almost
+                    // nothing shows the largest shortfall AND carries the least
+                    // evidence, and without this the first four seconds of a
+                    // track could throw the setting clean through its useful range.
+                    step = 1.0 + ((step - 1.0) * evidence);
 
                     Sensitivity = Math.Max(Sensitivity * step, AutoLowest);
                 }
