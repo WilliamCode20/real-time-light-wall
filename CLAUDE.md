@@ -126,7 +126,7 @@ dotnet publish "desktop-app/LightWallController/LightWall.App" -p:PublishProfile
 | `LightWall.Core` | `net10.0` | Wall model, effects, engine, clock, transport, packet format, virtual wall, **all audio analysis**. No UI, no platform dependencies. |
 | `LightWall.App` | `net10.0-windows` | WPF simulator window. The only project that knows about WPF. |
 | `LightWall.IO` | `net10.0-windows` | Real hardware and system I/O: `SerialTransport`, `SystemAudioCapture`. Windows-specific because WASAPI is. |
-| `LightWall.Tests` | `net10.0-windows` | xUnit tests. **382 of them.** Windows-targeted only because it references IO. |
+| `LightWall.Tests` | `net10.0-windows` | xUnit tests. **383 of them.** Windows-targeted only because it references IO. |
 
 **25 effects** live in `EffectCatalog`: 9 static patterns, 3 pre-set animations,
 12 procedural, 1 diagnostic. Ten of the procedural ones react to audio.
@@ -368,13 +368,24 @@ bottom-right in the expected order; the mapping is settled.
   pin 27. Note they are *not* arranged in label order in the box.
 - **Active HIGH** — SSR control is non-inverting
 - **No driver stage.** Relays are switched straight from the digital pins through
-  270 Ω resistors, with a shared ground back to one Arduino GND pin. Nothing is
-  connected to 5V or 3.3V.
-- **~5.5 mA per channel, ~192 mA with all 35 lit** — just under the ATmega2560's
-  200 mA absolute maximum. Fine in bursts, as the original show proved. **Avoid
-  effects that hold all 35 on for minutes**, and mention the margin if one is
-  proposed. Do not raise it as an alarm; the installation has worked this way for
-  years.
+  **120 Ω** resistors, with a shared ground back to one Arduino GND pin. Nothing
+  is connected to 5V or 3.3V.
+- **~6 mA per channel, ~210 mA with all 35 lit** — which is *fractionally over*
+  the ATmega2560's 200 mA absolute maximum, not under it. Fine in bursts, as the
+  original show proved: absolute maximum is a stress rating rather than a cliff,
+  and full-wall flashes have run on this installation for years without failing.
+  What is new is **duration** — this app could hold `Fill` for hours during a set
+  in a hot enclosure, where the old show ran one song. **Avoid effects that hold
+  all 35 on for minutes**, and mention the margin if one is proposed. Do not
+  raise it as an alarm.
+
+  **An earlier version of this file said 270 Ω, ~5.5 mA and ~192 mA, describing
+  the total as comfortably under the limit. That was wrong in both the number and
+  the sign of the margin**, and it was introduced by a documentation tidy-up
+  rather than by any measurement. `docs/HARDWARE_NOTES.md` had the surveyed
+  figures right the whole time. Worth recording because a summarising pass is
+  exactly where numbers get quietly altered, and because the error pointed the
+  reassuring way.
 - Arduino powered from the **barrel jack**; the **USB port is free** for serial
 - Bulbs are LEDs and cut near-instantly (a few ms of fade)
 - **Pin 13 drives a bulb** as well as being the built-in LED — never use it for

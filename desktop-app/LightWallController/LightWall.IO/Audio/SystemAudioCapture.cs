@@ -142,12 +142,17 @@ namespace LightWall.IO.Audio
         }
 
         /// <summary>
-        /// How big a jump has to be before it counts as a beat, as a multiple of
-        /// how big the jumps in this music have been lately.
+        /// How big a jump has to be before it counts as a beat, counted in units
+        /// of how much the jumps in this music normally vary.
+        ///
+        /// A COUNT OF DEVIATIONS, NOT A MULTIPLIER. It used to be a multiplier
+        /// on the average flux and ran from about 1 to 3; it is now added to the
+        /// middle reading instead, so the old numbers mean nothing here and the
+        /// default moved from 1.7 to 5. See OnsetDetector.ComputeThreshold.
         ///
         /// Higher finds only the obvious hits; lower finds more, and eventually
         /// starts reporting ordinary texture as beats. This is what the Beat
-        /// Sensitivity slider sets. See OnsetDetector.Sensitivity.
+        /// size slider sets. See OnsetDetector.Sensitivity.
         ///
         /// Note that this is a completely separate thing from the Sensitivity
         /// property above, which is about how hard the bars bump. They are named

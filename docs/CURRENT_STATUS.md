@@ -6,7 +6,7 @@ The full chain works end to end: **music → capture → analysis → engine →
 → firmware → real bulbs.** The hardware mapping was verified against the physical
 wall on 2026-08-04.
 
-The solution builds clean with 382 passing tests.
+The solution builds clean with 383 passing tests.
 
 ### Core wall model
 
@@ -605,8 +605,9 @@ estimate is wrong.
 ### Tuning beat detection by ear
 
 Two settings decide what counts as a beat, and both can only really be judged by
-listening: how big a jump has to be (`OnsetDetector.Sensitivity`, 1.7) and the
-shortest allowed gap between beats (`MinimumSecondsBetweenBeats`, 0.12).
+listening: how big a jump has to be (`OnsetDetector.Sensitivity`, **5.0**, a
+count of deviations rather than a multiplier) and the shortest allowed gap
+between beats (`MinimumSecondsBetweenBeats`, **0.20**).
 
 They are now sliders in the window — **Beat size** and **Beat gap** — rather than
 numbers in the code. That matters more than it sounds. Tuning by ear needs the
@@ -1008,7 +1009,7 @@ bulb count for the current frame.
 
 ### Tests
 
-382 tests covering the wall model, the exact byte layout of the protocol,
+383 tests covering the wall model, the exact byte layout of the protocol,
 round-trip packing, effect repeatability, engine behaviour, the receiver's
 stream handling under deliberately injected faults, the output pipeline end to
 end, and the whole audio chain — loudness, automatic gain, frequency bands,
@@ -1067,8 +1068,13 @@ than missing foundation, and is listed in `NEXT_STEPS.md`. In short:
 - **Tuning by ear.** The beat sliders now exist but the defaults have not been
   dialled in against real music. Same for the Smoothing and Sensitivity defaults.
 - **Output rate.** 30 packets a second is the safe number and the largest single
-  contributor to audio-to-light delay. 60 is within proven territory; the trade
-  is relay wear.
+  contributor to audio-to-light delay. 60 is within proven territory. The trade
+  is **not** relay wear, which an earlier version of this file claimed — the
+  relays are solid state and the bulbs are LEDs, so nothing is wearing out, and
+  bandwidth is under 5% either way. The real limiter is zero-cross switching: an
+  SSR can only change state as the mains passes zero, every 8.3 ms, so 60 Hz buys
+  perhaps 10–12 ms of the 16 ms it promises on paper and past ~120 Hz nothing at
+  all. See `NEXT_STEPS.md`.
 - **Beat-driven effects.** `AudioFeatures.BeatPhase` runs from 0 to 1 across each
   beat and nothing uses it yet. Bar tracking would open up more.
 - **Scene control for a DJ.** The real product goal, and where

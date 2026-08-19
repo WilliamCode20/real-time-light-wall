@@ -209,10 +209,15 @@ Still not fully confirmed:
 - behaviour under sustained rapid updates over long periods, which the old show
   never had to do since it ran for one song
 
-## Current Software Assumption
+## How the Software Actually Uses This
 
-For software planning purposes, the current working assumption is:
+This section used to describe an assumption. It is now how the system works, and
+it was built exactly this way:
 
-- the Arduino will eventually receive already-decided wall frames from the desktop app
-- the desktop app will be the main "brain"
-- the Arduino will mainly act as an output device
+- the Arduino receives already-decided wall frames from the desktop app
+- the desktop app is the "brain" — capture, analysis, effects, frame generation
+- the Arduino is purely an output device: receive, validate, set pins
+
+The firmware in `arduino-firmware/mega-controller/` contains no animation, timing
+or show logic at all. That split is what lets the app be rewritten, restarted or
+crashed without the board needing reflashing.

@@ -3,7 +3,7 @@
 ## Where the project stands
 
 The full chain works: **music → capture → analysis → engine → packets → firmware
-→ real bulbs.** The hardware mapping is verified against the physical wall. 382
+→ real bulbs.** The hardware mapping is verified against the physical wall. 383
 tests pass.
 
 Everything below is improvement rather than missing foundation.
@@ -265,9 +265,14 @@ reached through the Hardware Check panel.
 
 ## Hardware follow-ups
 
-- **Confirm the 5.5 mA figure** by measuring volts across one 270 Ω resistor with
-  that bulb lit (~0.72 V confirms it). This is a parallel measurement, so nothing
-  needs disconnecting.
+- **Confirm the 6 mA figure** by measuring volts across one 120 Ω resistor with
+  that bulb lit, then dividing by 120. About 0.72 V confirms it. This is a
+  parallel measurement, so nothing needs disconnecting — unlike a current
+  reading, which means breaking the circuit and putting the meter in series.
+
+  Worth doing because the whole-wall total sits *just over* the ATmega2560's
+  200 mA absolute maximum rather than just under it, and 6 mA is a survey figure
+  rather than a meter reading.
 - **A driver stage** (five ULN2803A chips, eight channels each) would take the
   Arduino out of the current budget entirely. Only worth it for a future
   installation, not this one.

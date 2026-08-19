@@ -7,21 +7,25 @@ namespace LightWall.Core.Transport
     ///
     /// WHY THIS IS AN INTERFACE
     ///
-    /// There will be at least two of these, and the app should not care which
-    /// one it is using:
+    /// There are three of these, and the app cannot tell them apart:
     ///
-    ///   LoopbackTransport - feeds the bytes to a software model of the Arduino
-    ///                       and shows what the wall would do. No hardware, no
-    ///                       hot warehouse, and it can be made to drop bytes on
-    ///                       purpose.
+    ///   LoopbackTransport  - feeds the bytes to a software model of the Arduino
+    ///                        and shows what the wall would do. No hardware, no
+    ///                        hot warehouse, and it can be made to drop bytes on
+    ///                        purpose.
     ///
-    ///   SerialTransport   - the real thing, over a USB cable. Not yet written.
+    ///   SerialTransport    - the real thing, over a USB cable.
     ///
-    /// Because both present the same face, everything upstream - the output
+    ///   CompositeTransport - both at once, which is how the app actually runs
+    ///                        when a port is connected. The virtual wall stays
+    ///                        beside the real one rather than being replaced.
+    ///
+    /// Because they all present the same face, everything upstream - the output
     /// service, the rate limiting, the packet building - is written once and
-    /// works with either. When the real serial version arrives it slots in
-    /// without changing anything above it, which also means every hour spent
-    /// testing against the loopback is testing the real code path too.
+    /// works with any of them. That paid off exactly as intended: when the real
+    /// serial version arrived it slotted in without a line changing above it,
+    /// which also means every hour spent testing against the loopback had been
+    /// testing the real code path all along.
     ///
     /// A third implementation may well be worth having later: one that records
     /// packets to a file for offline inspection.
@@ -42,12 +46,15 @@ namespace LightWall.Core.Transport
         /// <summary>
         /// Opens the connection.
         ///
-        /// For the real serial version this is where the port is opened - and
-        /// where a subtlety lives that is worth knowing about in advance:
-        /// opening a serial port to an Arduino Mega toggles the DTR line, which
-        /// RESETS the board. For roughly the first one and a half to two seconds
-        /// afterwards the bootloader is running and will ignore anything sent.
-        /// That implementation will need to wait before it starts talking.
+        /// For the serial version this is where the port is opened - and where a
+        /// subtlety lives that catches everybody once: opening a serial port to
+        /// an Arduino Mega toggles the DTR line, which RESETS the board. For
+        /// roughly the first one and a half to two seconds afterwards the
+        /// bootloader is running and ignores anything sent.
+        ///
+        /// SerialTransport handles that by discarding packets during a settle
+        /// window rather than blocking here, since Connect is called from the
+        /// window and blocking would freeze it.
         /// </summary>
         void Connect();
 

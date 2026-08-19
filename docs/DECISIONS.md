@@ -141,7 +141,8 @@ Reason:
 - three things need to know what the wall should look like — the simulator, the
   serial layer, and the tests — and only one of them is a window
 - logic inside a window can only ever be used by that window
-- it made the engine testable, which is where most of the 80 tests came from
+- it made the engine testable, which is where most of the tests came from (80 at
+  the time this decision was taken; 383 now)
 
 ### 11. Effects are registered in a catalog
 
@@ -168,7 +169,7 @@ Reason:
 The settings live in a publish profile rather than the `.csproj` so that ordinary
 debug builds do not also copy the entire runtime into their output folder.
 
-### 9. Build safety / workflow
+### 13. Build safety / workflow
 
 The preferred workflow is:
 
@@ -183,14 +184,19 @@ Reason:
 - helps avoid AI-generated chaos
 - keeps the project understandable
 
-## Things Intentionally Deferred
+## Things Once Deferred, Now Built
 
-The following are intentionally not yet implemented:
+This section used to list live serial transport, audio capture, beat detection,
+feature extraction and music-to-animation mapping as deferred, on the reasoning
+that the simulator, the frame model and the serialization layer had to exist
+first.
 
-- live serial transport
-- audio capture
-- beat detection
-- feature extraction
-- music-to-animation mapping
+**All five now exist**, and the reasoning held up: each one slotted into the
+layers below it without those layers changing. `SerialTransport` was the only new
+code needed to drive real hardware, because everything upstream had been written
+against `IWallTransport` and proved against the loopback.
 
-These are deferred because the simulator, frame model, and serialization layers needed to exist first.
+For what is genuinely still deferred — and why some of it should stay that way —
+see the "Things deliberately not built yet" section of `CLAUDE.md` and the
+ordered list in `NEXT_STEPS.md`. In short: per-effect parameters, brightness or
+dimming, scene and preset saving, MIDI, DMX and network control.

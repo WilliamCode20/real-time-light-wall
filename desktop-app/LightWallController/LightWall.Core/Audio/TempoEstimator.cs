@@ -816,7 +816,6 @@ namespace LightWall.Core.Audio
             // measured a rock-steady 120 before this was written. They are
             // included because relying on the range to keep covering that is
             // luck rather than design, and the cost of listing them is nothing.
-            // Is this reading the same tempo counted differently?
             bool relatedReading = false;
 
             if (_trust >= TrustToAbsorbRelatedTempos)

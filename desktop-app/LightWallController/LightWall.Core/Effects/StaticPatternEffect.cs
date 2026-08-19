@@ -13,9 +13,9 @@ namespace LightWall.Core.Effects
     /// WHY BOTHER WRAPPING SOMETHING THAT DOES NOT MOVE?
     ///
     /// So that the engine always has exactly one answer to the question "what is
-    /// playing right now?". Without this, the serial layer and the future audio
-    /// layer would each need a special case for "actually nothing is playing,
-    /// there is just a static picture sitting there".
+    /// playing right now?". Without this, the serial layer and the audio layer
+    /// would each need a special case for "actually nothing is playing, there is
+    /// just a static picture sitting there".
     ///
     /// Making stillness just another kind of effect removes that special case
     /// everywhere, at the cost of this one small class.

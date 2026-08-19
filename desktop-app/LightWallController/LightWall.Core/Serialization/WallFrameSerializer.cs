@@ -231,10 +231,14 @@ namespace LightWall.Core.Serialization
         /// <summary>
         /// Builds a keep-alive packet.
         ///
-        /// The plan is for the firmware to blank the wall if it hears nothing
-        /// for a while, so that a crashed or disconnected app leaves the wall
-        /// dark rather than frozen mid-pattern. That safety net needs the app to
-        /// keep saying "still here" during moments when no frames are being sent.
+        /// The firmware blanks the wall if it hears nothing for a second, so that a
+        /// crashed or disconnected app leaves the wall dark rather than frozen
+        /// mid-pattern. That safety net needs the app to keep saying "still
+        /// here" during any stretch when no frames are being sent.
+        ///
+        /// Nothing sends these today, because the output service sends every
+        /// frame whether or not it changed and that keeps the watchdog fed by
+        /// itself. See PacketCommand.Heartbeat.
         /// </summary>
         public static byte[] CreateHeartbeatPacket()
         {

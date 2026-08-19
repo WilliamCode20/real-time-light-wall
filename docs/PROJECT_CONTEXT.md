@@ -70,12 +70,17 @@ This choice was made because the app needs:
 
 - a real desktop UI
 - structured code
-- future access to Windows system audio
-- future serial communication with Arduino hardware
+- access to Windows system audio
+- serial communication with Arduino hardware
+
+The last two were the reason for choosing Windows-first, and were still ahead
+when the decision was taken. Both have since been built — WASAPI loopback capture
+and a serial transport driving the real wall — so the choice can be judged rather
+than merely justified, and it held up.
 
 ## Long-Term Architecture
 
-The long-term architecture is:
+The architecture below was the plan, and is now what the system does:
 
 Computer app:
 

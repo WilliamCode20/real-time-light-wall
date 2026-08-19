@@ -32,7 +32,7 @@ wall on 2026-08-04.
 - A virtual wall decoded from the actual packets, running beside the real one as
   a permanent diagnostic
 - Tested 9-byte serial protocol and Arduino Mega firmware
-- **382 tests pass**
+- **383 tests pass**
 
 What remains is refinement rather than missing foundation: tuning beat detection
 against real music, and DJ-facing scene control. See `docs/NEXT_STEPS.md`.

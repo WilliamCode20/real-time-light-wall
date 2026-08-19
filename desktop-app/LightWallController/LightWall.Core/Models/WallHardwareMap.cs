@@ -181,7 +181,14 @@ namespace LightWall.Core.Models
         /// <summary>
         /// Builds a one-line description of a bulb naming it every way at once.
         ///
-        /// For example: "Bulb 23 of 35   row 4, col 3   relay D3   Arduino pin 33"
+        /// For example: "Bulb 23 of 34   row 4, col 3   relay D3   Arduino pin 33"
+        ///
+        /// "of 34" rather than "of 35" on purpose, and it is the one number here
+        /// not written the way a person counts. Bulb numbers run 0 to 34 because
+        /// they are also bit positions in a packet, so naming the last one is
+        /// more use at the wall than naming the total - it says where the
+        /// stepping stops. Rows and columns beside it ARE written from 1,
+        /// because those match nothing but the sticker.
         ///
         /// This is what the identification mode shows while walking the wall.
         /// All four names together mean the reading can be checked against the

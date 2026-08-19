@@ -18,7 +18,8 @@ namespace LightWall.Core.Engine
     /// the wall were tangled up with the rules of the window.
     ///
     /// Pulling it out here matters for a practical reason: this project has
-    /// three future consumers of "what should the wall look like right now?"
+    /// three consumers of "what should the wall look like right now?", and all
+    /// three exist today
     ///
     ///   1. the simulator on screen
     ///   2. the physical wall, over the serial cable
@@ -41,15 +42,21 @@ namespace LightWall.Core.Engine
     /// Clicking a cell drops into Manual mode. Choosing an effect returns to
     /// Playing mode.
     ///
-    /// A NOTE ON THREADS - relevant when serial arrives
+    /// A NOTE ON THREADS - AND WHY THIS CLASS STAYS SIMPLE
     ///
-    /// This class is not safe to use from several threads at once. Right now
-    /// that is fine, because everything runs on the one user-interface thread.
+    /// This class is not safe to use from several threads at once, and that is
+    /// deliberate rather than an oversight waiting to be fixed.
     ///
-    /// When the serial layer is added it will want frames from a background
-    /// thread, and that is the moment this will need protecting. The simplest
-    /// approach then is for the background thread to be handed a copy of the
-    /// finished frame rather than reaching in here directly.
+    /// Three threads do want at it - the show clock ticking it, the window
+    /// drawing it, the output service sampling it - but none of them touches it
+    /// directly. WallShowClock owns this object outright and is the only thing
+    /// that may reach in; everything else goes through Modify, which takes a
+    /// lock first, or CopyCurrentFrameTo, which hands out a copy.
+    ///
+    /// So the locking lives in exactly one place instead of being sprinkled
+    /// through here. Do not add locks to this class - that would put the same
+    /// protection in two layers, and the second one would be the harder to
+    /// reason about.
     /// </summary>
     public sealed class WallEngine
     {
@@ -84,8 +91,8 @@ namespace LightWall.Core.Engine
         /// The finished article: what the wall should actually show right now,
         /// with offsets already applied.
         ///
-        /// This is the frame the simulator draws and the frame the serial layer
-        /// will eventually send.
+        /// This is the frame the simulator draws and the frame the output service
+        /// samples and sends.
         /// </summary>
         private readonly WallFrame _outputFrame = new();
 

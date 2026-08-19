@@ -38,8 +38,10 @@ namespace LightWall.App
     ///        +--> WallOutputService samples it 30 times a second, builds
     ///                               packets, and hands them to a transport
     ///                                   |
-    ///                                   +--> LoopbackTransport (virtual wall)
-    ///                                   +--> SerialTransport   (not yet built)
+    ///                                   +--> LoopbackTransport (virtual wall,
+    ///                                        always attached)
+    ///                                   +--> SerialTransport   (the real wall,
+    ///                                        added alongside when connected)
     ///
     /// The important part is that the window is now just one of the clock's
     /// consumers rather than the thing driving everything. The wall keeps

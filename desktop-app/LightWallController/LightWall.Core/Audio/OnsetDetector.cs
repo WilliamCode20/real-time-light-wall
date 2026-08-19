@@ -36,9 +36,15 @@ namespace LightWall.Core.Audio
     /// mix and quiet passages never trigger; set it for a sparse one and a loud
     /// section triggers constantly.
     ///
-    /// So the threshold follows the recent average flux. A beat is not "louder
-    /// than some number" but "a bigger jump than this music has been making
-    /// lately", which is much closer to what a listener actually notices.
+    /// So the threshold follows the music. A beat is not "louder than some
+    /// number" but "a bigger jump than this music has been making lately",
+    /// which is much closer to what a listener actually notices.
+    ///
+    /// Specifically it is the MIDDLE recent flux reading plus a share of how
+    /// much readings normally vary - not the average times a multiplier, which
+    /// is what it used to be and which needed the slider moved for nearly every
+    /// song. See ComputeThreshold, which carries the reasoning and the measured
+    /// before-and-after.
     /// </summary>
     public sealed class OnsetDetector
     {
@@ -565,8 +571,11 @@ namespace LightWall.Core.Audio
         /// <summary>
         /// Decides whether this reading is the start of a beat.
         ///
-        /// Three things must all be true, and each rules out a different kind of
-        /// false alarm.
+        /// Four things must all be true, and each rules out a different kind of
+        /// false alarm. Two are about SIZE - there has to be something there,
+        /// and it has to be big for this music - and two are about TIMING, which
+        /// is why a reading can sit above the threshold without a beat being
+        /// reported. TriggerRatio shows only the size half, and says so.
         /// </summary>
         private bool IsOnset(double flux, double nowSeconds)
         {

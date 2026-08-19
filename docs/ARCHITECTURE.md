@@ -70,7 +70,7 @@ analysis is not here and must not be moved here.
 
 ### `LightWall.Tests`
 
-xUnit tests covering Core and the testable parts of IO. **382 tests.** Windows
+xUnit tests covering Core and the testable parts of IO. **383 tests.** Windows
 targeted only because it references IO.
 
 ## Core Model: `WallFrame`
@@ -105,8 +105,9 @@ void Render(EffectContext context, WallFrame target);
 
 This replaced three unrelated shapes that previously existed — static patterns,
 frame lists, and procedural generators each had their own signature. A single
-shape means the engine, the future serial layer, a future scene-picker UI, and a
-future audio system can all work with any effect without special cases.
+shape means the engine, the serial layer and the audio system all work with any
+effect without special cases — and all three have since been built on it without
+needing one. A future scene-picker UI gets the same deal.
 
 ### The three kinds of effect
 
@@ -311,10 +312,23 @@ Two findings its tests pinned down:
   only recovered from — the checksum catches the misread and the receiver is back
   in step within a couple of packets.
 
-## Intended Next Architecture Step
+## The Architecture Steps That Were Planned Here, and Landed
 
-A second wall in the interface showing what `VirtualWallReceiver` decoded, next
-to what the engine drew. When the two match while sliders are being dragged, the
-whole pipeline is proven except the physical layer.
+This section used to describe three things as upcoming. All three are built, and
+they are recorded here because the order turned out to matter:
 
-After that: a real `SerialTransport` in `LightWall.IO`, then firmware.
+1. **A second wall in the interface**, showing what `VirtualWallReceiver` decoded
+   beside what the engine drew. Built, and it proved the whole pipeline except
+   the physical layer before any hardware was involved.
+2. **A real `SerialTransport` in `LightWall.IO`.** Built, and it was the only new
+   code needed — everything upstream already spoke `IWallTransport`.
+3. **Firmware.** Written as a translation of `VirtualWallReceiver`, which is why
+   it needed almost no debugging on the board itself.
+
+Doing them in that order is why the last step was cheap. The virtual wall is not
+scaffolding that has served its purpose; it still runs alongside the real wall
+permanently, which is the project's most useful diagnostic.
+
+For what comes next, see `NEXT_STEPS.md`. The architectural item on that list is
+splitting `EffectParameters` into a per-effect system, which DJ-facing scene
+control will force.

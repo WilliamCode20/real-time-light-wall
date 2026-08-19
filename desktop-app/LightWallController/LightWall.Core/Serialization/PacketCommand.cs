@@ -36,10 +36,15 @@ namespace LightWall.Core.Serialization
         /// <summary>
         /// "Still here." The payload is ignored.
         ///
-        /// Intended for the planned firmware watchdog: if nothing arrives for a
-        /// set period the wall blanks itself, so that a crashed app or an
-        /// unplugged cable leaves the wall dark rather than stuck on whatever
-        /// frame it happened to be showing.
+        /// Feeds the firmware watchdog: if no valid packet arrives for a second the
+        /// wall blanks itself, so that a crashed app or an unplugged cable
+        /// leaves the wall dark rather than stuck on whatever frame it happened
+        /// to be showing.
+        ///
+        /// Not currently sent by anything, and that is not an oversight - the
+        /// output service sends every frame even when unchanged, which feeds the
+        /// watchdog on its own. This exists for a future mode that stops sending
+        /// frames while wanting the wall to hold its picture.
         /// </summary>
         Heartbeat = 0x03
     }

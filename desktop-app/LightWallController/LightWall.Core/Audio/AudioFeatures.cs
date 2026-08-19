@@ -7,8 +7,8 @@ namespace LightWall.Core.Audio
     /// A snapshot of what the music was doing at one instant.
     ///
     /// This is the bridge between the audio side of the app and the visual side.
-    /// Audio capture produces these; effects will eventually read them the same
-    /// way they read time today.
+    /// Audio capture produces these; effects read them through EffectContext the
+    /// same way they read elapsed time.
     ///
     /// WHY THIS IS IMMUTABLE
     ///
