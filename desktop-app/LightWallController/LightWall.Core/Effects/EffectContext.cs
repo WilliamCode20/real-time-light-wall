@@ -141,10 +141,32 @@ namespace LightWall.Core.Effects
         /// between real beats and the metronome be made once, in the interface,
         /// instead of in every effect. See BeatSource.
         /// </summary>
-        public int BeatCount =>
-            Parameters.BeatSource == BeatSource.Tempo
-                ? Audio.PulseCount
-                : Audio.BeatCount;
+        public int BeatCount => UseMetronome ? Audio.PulseCount : Audio.BeatCount;
+
+        /// <summary>
+        /// Whether the metronome, rather than what was actually heard, is the
+        /// beat right now.
+        ///
+        /// Under Automatic this changes during a track: detection while the
+        /// tempo estimate is still moving, the metronome once it has settled.
+        /// See BeatSource.Automatic.
+        /// </summary>
+        private bool UseMetronome => Parameters.BeatSource switch
+        {
+            BeatSource.Tempo => true,
+            BeatSource.Automatic => Audio.TempoStability >= StabilityToPredict,
+            _ => false
+        };
+
+        /// <summary>
+        /// How settled the tempo must be before Automatic starts predicting.
+        ///
+        /// Full settlement rather than a half measure. Handing over early is the
+        /// failure worth avoiding - a metronome at the wrong speed is the loudest
+        /// mistake this project can make - and the cost of waiting is only that
+        /// detection carries a few more seconds, which it does perfectly well.
+        /// </summary>
+        private const double StabilityToPredict = 1.0;
 
         /// <summary>
         /// How long ago the last beat was, counting whichever kind of beat the
@@ -155,9 +177,7 @@ namespace LightWall.Core.Effects
         /// something new", this is right for "be bright just after".
         /// </summary>
         public double SecondsSinceBeat =>
-            Parameters.BeatSource == BeatSource.Tempo
-                ? Audio.SecondsSincePulse
-                : Audio.SecondsSinceBeat;
+            UseMetronome ? Audio.SecondsSincePulse : Audio.SecondsSinceBeat;
 
         /// <summary>
         /// Converts the current time into a whole step number at whatever pace

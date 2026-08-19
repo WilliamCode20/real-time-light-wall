@@ -421,7 +421,8 @@ namespace LightWall.Core.Audio
                 Tempo.Confidence,
                 sincePulse,
                 Clock.PulseCount,
-                Clock.Phase);
+                Clock.Phase,
+                Tempo.Stability);
         }
 
         /// <summary>

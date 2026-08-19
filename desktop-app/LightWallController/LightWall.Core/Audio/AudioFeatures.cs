@@ -62,11 +62,13 @@ namespace LightWall.Core.Audio
             double tempoConfidence = 0.0,
             double secondsSincePulse = NoBeatYet,
             int pulseCount = 0,
-            double beatPhase = 0.0)
+            double beatPhase = 0.0,
+            double tempoStability = 0.0)
         {
             SecondsSincePulse = secondsSincePulse;
             PulseCount = pulseCount;
             BeatPhase = beatPhase;
+            TempoStability = tempoStability;
             Rms = rms;
             Peak = peak;
             Level = level;
@@ -257,6 +259,22 @@ namespace LightWall.Core.Audio
         /// and an unconfident one look identical without it.
         /// </summary>
         public double TempoConfidence { get; }
+
+        /// <summary>
+        /// How long the tempo estimate has held still, from 0 to 1.
+        ///
+        /// A DIFFERENT QUESTION FROM CONFIDENCE, AND USUALLY THE MORE USEFUL ONE.
+        ///
+        /// Confidence asks what share of recent sounds land on the beat, which
+        /// plenty of correct answers score badly on - real music is full of
+        /// off-beat content. This asks only whether the answer has stopped
+        /// moving.
+        ///
+        /// It is what "the tempo looks solid now" should be judged on. See
+        /// TempoEstimator.Stability, including why being blind to whether the
+        /// answer is right is safe here.
+        /// </summary>
+        public double TempoStability { get; }
 
         /// <summary>
         /// True when nothing is playing.

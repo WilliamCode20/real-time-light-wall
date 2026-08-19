@@ -865,9 +865,17 @@ namespace LightWall.App
             // IsChecked is a bool? rather than a bool, because a checkbox can
             // also be in an indeterminate state. These never are, so anything
             // other than a definite true means the other option.
-            return BeatSourceTempoRadio.IsChecked == true
-                ? BeatSource.Tempo
-                : BeatSource.Detected;
+            if (BeatSourceTempoRadio.IsChecked == true)
+            {
+                return BeatSource.Tempo;
+            }
+
+            if (BeatSourceDetectedRadio.IsChecked == true)
+            {
+                return BeatSource.Detected;
+            }
+
+            return BeatSource.Automatic;
         }
 
         /// <summary>
@@ -883,7 +891,7 @@ namespace LightWall.App
             // first radio button is marked IsChecked in the XAML, so this fires
             // before the second one has been created - and SelectedBeatSource
             // reads that second one.
-            if (BeatSourceTempoRadio is null)
+            if (BeatSourceTempoRadio is null || BeatSourceDetectedRadio is null)
             {
                 return;
             }

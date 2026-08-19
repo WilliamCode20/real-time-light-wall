@@ -269,6 +269,21 @@ namespace LightWall.Core.Audio
         /// </summary>
         private const double ConfidenceToEarnTrust = 0.5;
 
+        /// <summary>
+        /// How settled the estimate must be before holding still alone earns
+        /// trust. See the second branch in UpdateTrust.
+        /// </summary>
+        private const double StabilityToEarnTrust = 0.5;
+
+        /// <summary>
+        /// How much more slowly trust builds from holding still than from
+        /// confident agreement.
+        ///
+        /// Twice as slow, because it is the weaker claim - it says the answer
+        /// has stopped moving, not that the music agrees with it.
+        /// </summary>
+        private const double StabilityTrustPenalty = 2.0;
+
         /// <summary>How much the settled tempo has earned, from 0 to 1.</summary>
         private double _trust;
 
@@ -322,6 +337,62 @@ namespace LightWall.Core.Audio
         /// another - and because tests need to be able to see it.
         /// </summary>
         public double Trust => _trust;
+
+        /// <summary>
+        /// How long the estimate has held still, from 0 to 1.
+        ///
+        /// A COMPLETELY DIFFERENT QUESTION FROM CONFIDENCE, AND THE ONE THAT
+        /// TURNS OUT TO MATTER MOST.
+        ///
+        /// Confidence asks what share of the recent sounds land on the beat.
+        /// That is honest and it is also a poor guide to whether the answer is
+        /// right, because plenty of real music is full of off-beat content. On a
+        /// recording of Spectra Ocean Dream Circuit the tempo was correct for
+        /// most of three minutes while confidence sat at 35-56% throughout -
+        /// never once reaching the half needed to earn any trust at all. Mean
+        /// trust across that recording was 0.03. The estimate therefore had no
+        /// memory whatsoever and wandered off the correct answer four separate
+        /// times, each time for want of any reason to stay put.
+        ///
+        /// This asks the plainer question instead: has the answer stopped
+        /// moving? A tempo that has read the same for ten seconds is worth
+        /// keeping whether or not the music is busy, and one that is still
+        /// hopping about is not - regardless of how confident each individual
+        /// reading looked.
+        ///
+        /// It is deliberately blind to whether the answer is CORRECT, because
+        /// nothing here can measure that. A wrong tempo held steadily will score
+        /// high. That is safe for the two things it is used for: earning trust,
+        /// which erodes again the moment a rival starts winning, and deciding
+        /// whether to drive effects from the metronome, where a steadily wrong
+        /// tempo looks no worse than a steadily wrong tempo already does.
+        /// </summary>
+        public double Stability { get; private set; }
+
+        /// <summary>
+        /// How far the tempo may drift and still count as holding still.
+        ///
+        /// Three percent is a little over three BPM at ordinary tempos - wider
+        /// than the fraction the estimate normally jitters by while tracking one
+        /// tempo, and far narrower than any of the wrong answers it lands on,
+        /// which are multiples and simple ratios rather than near misses.
+        /// </summary>
+        private const double SteadyWithin = 0.03;
+
+        /// <summary>
+        /// How long the tempo has to hold still to count as fully settled.
+        ///
+        /// Ten seconds is about twenty beats. Long enough that a passage which
+        /// happens to fit briefly does not qualify, short enough that a listener
+        /// waiting for the wall to lock on is not left watching it hesitate.
+        /// </summary>
+        private const double SecondsToSettle = 10.0;
+
+        /// <summary>The tempo the steady stretch is being measured against.</summary>
+        private double _steadyReferenceBpm;
+
+        /// <summary>When the current steady stretch began.</summary>
+        private double _steadySinceSeconds;
 
         /// <summary>When each remembered sound happened.</summary>
         private readonly List<double> _onsetTimes = new();
@@ -454,6 +525,9 @@ namespace LightWall.Core.Audio
             _trust = 0.0;
             _lastTrustSeconds = 0.0;
             _challengerLeading = false;
+            Stability = 0.0;
+            _steadyReferenceBpm = 0.0;
+            _steadySinceSeconds = 0.0;
         }
 
         /// <summary>
@@ -479,6 +553,8 @@ namespace LightWall.Core.Audio
             }
 
             double quietFor = nowSeconds - _onsetTimes[^1];
+
+            UpdateStability(nowSeconds);
 
             // Before the early exits below, so trust keeps moving in every
             // passage rather than only in the ones that reach the end of this
@@ -528,6 +604,36 @@ namespace LightWall.Core.Audio
         /// half of them. Erosion is not scaled: once the evidence has turned,
         /// how good the answer used to look stops being the point.
         /// </summary>
+        /// <summary>
+        /// Notices whether the estimate is still moving. See Stability.
+        /// </summary>
+        private void UpdateStability(double nowSeconds)
+        {
+            if (Bpm <= 0.0)
+            {
+                Stability = 0.0;
+                _steadyReferenceBpm = 0.0;
+                _steadySinceSeconds = nowSeconds;
+                return;
+            }
+
+            bool stillNearReference =
+                _steadyReferenceBpm > 0.0 &&
+                Math.Abs(Bpm - _steadyReferenceBpm) <= _steadyReferenceBpm * SteadyWithin;
+
+            if (!stillNearReference)
+            {
+                // Moved. The stretch starts again from here, measured against
+                // wherever it has just landed.
+                _steadyReferenceBpm = Bpm;
+                _steadySinceSeconds = nowSeconds;
+                Stability = 0.0;
+                return;
+            }
+
+            Stability = Math.Clamp((nowSeconds - _steadySinceSeconds) / SecondsToSettle, 0.0, 1.0);
+        }
+
         private void UpdateTrust(double nowSeconds, double quietFor)
         {
             double elapsed = Math.Min(nowSeconds - _lastTrustSeconds, LargestTrustStepSeconds);
@@ -554,11 +660,33 @@ namespace LightWall.Core.Audio
             {
                 _trust += elapsed * _measuredConfidence / TrustBuildSeconds;
             }
+            else if (Stability >= StabilityToEarnTrust)
+            {
+                // A SECOND WAY TO EARN TRUST, AND ON REAL MUSIC IT IS THE ONE
+                // THAT USUALLY APPLIES.
+                //
+                // Requiring confidence alone assumed that a correct tempo would
+                // be agreed with by half the sounds. Plenty of real music does
+                // not oblige. Measured on a recording of Spectra Ocean Dream
+                // Circuit, the tempo was right for most of three minutes while
+                // confidence sat between 35% and 56% - never once clearing the
+                // bar - so mean trust across the whole recording was 0.03. With
+                // nothing invested, the estimate had no reason to stay put and
+                // wandered off the correct answer four separate times.
+                //
+                // Having held the same reading for ten seconds is a different
+                // kind of evidence, and on that material a far more available
+                // one. It earns trust more slowly than confident agreement does,
+                // because it is the weaker claim: it says the answer has stopped
+                // moving, not that the music agrees with it.
+                _trust += elapsed * Stability / (TrustBuildSeconds * StabilityTrustPenalty);
+            }
 
-            // Note the missing third case: an answer that nothing is beating but
-            // that only half the sounds agree with neither gains nor loses. It
-            // keeps whatever it has already earned and stops climbing, so a
-            // mediocre reading cannot reach full trust just by lasting a while.
+            // Note the missing case: an answer that nothing is beating, that
+            // only half the sounds agree with, and that is still moving about,
+            // neither gains nor loses. It keeps whatever it has already earned
+            // and stops climbing, so a mediocre reading cannot reach full trust
+            // just by lasting a while.
             _trust = Math.Clamp(_trust, 0.0, 1.0);
         }
 

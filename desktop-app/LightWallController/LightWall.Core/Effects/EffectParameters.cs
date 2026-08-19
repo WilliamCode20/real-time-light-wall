@@ -42,7 +42,41 @@ namespace LightWall.Core.Effects
         /// it deserves. It also does nothing at all until a tempo has been worked
         /// out, since a metronome with no tempo has nothing to count.
         /// </summary>
-        Tempo
+        Tempo,
+
+        /// <summary>
+        /// Beats actually heard until the tempo settles, then the metronome.
+        ///
+        /// WHY THIS IS THE SENSIBLE CHOICE FOR RUNNING A SET
+        ///
+        /// The two above are each right at a different moment, and the moment
+        /// they swap over is predictable.
+        ///
+        /// A track starts and there is no tempo yet - often none worth having
+        /// for the best part of a minute, because intros are sparse and the beat
+        /// only becomes plain once the arrangement fills out. Measured on a real
+        /// recording of Me Too, the estimate walked 74, 96, 114, 120 and only
+        /// reached the true 124 after forty seconds. A metronome driven by that
+        /// is confidently wrong for forty seconds, and wrongness is loud.
+        /// Detection is honest through exactly that stretch: it fires on what is
+        /// really there, and when there is little there it stays quiet, which
+        /// reads as restraint rather than as error.
+        ///
+        /// Once the tempo HAS settled the balance reverses. The metronome keeps
+        /// perfect time and carries straight through a breakdown where there is
+        /// nothing to detect, which is the whole reason it exists.
+        ///
+        /// So this follows what was heard while the estimate is still moving and
+        /// hands over once it has stopped. What counts as stopped is
+        /// TempoStability rather than confidence - see
+        /// AudioFeatures.TempoStability for why confidence is the wrong measure
+        /// for this question.
+        ///
+        /// One cost, and it is small: the two counts are different numbers, so
+        /// the handover produces a single extra beat. One stray flash per track,
+        /// against forty seconds of a metronome running at the wrong speed.
+        /// </summary>
+        Automatic
     }
 
     /// <summary>

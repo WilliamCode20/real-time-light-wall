@@ -50,7 +50,8 @@ namespace LightWall.Core.Audio
         double TempoConfidence,
         double SecondsSincePulse,
         int PulseCount,
-        double BeatPhase)
+        double BeatPhase,
+        double TempoStability)
     {
         /// <summary>
         /// The state before anything has been heard.
@@ -62,6 +63,7 @@ namespace LightWall.Core.Audio
             0.0,
             AudioFeatures.NoBeatYet,
             0,
+            0.0,
             0.0);
     }
 }

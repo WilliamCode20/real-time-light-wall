@@ -336,10 +336,27 @@
                                Margin="0,0,12,0"/>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <!--
+                            Automatic is first and is the default, because it is
+                            the right answer for anyone running a set rather than
+                            diagnosing the detector. The other two stay because
+                            each is the honest choice while judging one half of
+                            the system - see BeatSource.
+                        -->
+                        <RadioButton x:Name="BeatSourceAutomaticRadio"
+                                     Content="Automatic"
+                                     GroupName="BeatSource"
+                                     IsChecked="True"
+                                     Foreground="White"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,18,0"
+                                     ToolTip="Follows beats actually heard while the tempo is still settling, then switches to the metronome once it has held steady. Best for a set."
+                                     Checked="BeatSourceRadio_Checked"/>
+
                         <RadioButton x:Name="BeatSourceDetectedRadio"
                                      Content="Detected beats"
                                      GroupName="BeatSource"
-                                     IsChecked="True"
                                      Foreground="White"
                                      FontSize="13"
                                      VerticalAlignment="Center"
