@@ -165,6 +165,18 @@ namespace LightWall.Core.Audio
             Spectrum.AddSamples(interleavedSamples, channels);
             double[] bands = Spectrum.Analyse(deltaSeconds);
 
+            // The automatic sensitivity tuner needs to know how fast the music is
+            // before it can know how many detections a second to aim for. Handed
+            // over rather than worked out inside the detector, which has no
+            // business estimating tempo.
+            //
+            // Safe when the tempo is wrong, which matters because it often is
+            // early in a track: a hint can only ever ask for MORE detections
+            // than the fixed floor, never fewer. See OnsetDetector.HealthyRange
+            // for the feedback loop that would otherwise trap the tuner at a
+            // wrong answer.
+            Onsets.TempoHintBpm = Tempo.Bpm;
+
             // Beat detection works from the RAW band strengths, not the smoothed
             // ones. Smoothing rounds off exactly the sharp rise an onset
             // consists of.

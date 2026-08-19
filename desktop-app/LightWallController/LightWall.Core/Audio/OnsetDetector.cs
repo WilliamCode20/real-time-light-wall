@@ -49,42 +49,81 @@ namespace LightWall.Core.Audio
     public sealed class OnsetDetector
     {
         /// <summary>
-        /// How many recent flux readings the moving threshold is based on.
+        /// How many readings there is room to remember.
         ///
-        /// At roughly a hundred readings a second this is about half a second -
-        /// long enough to average over a beat or two, short enough to follow a
-        /// change in the music.
+        /// A CAPACITY, NOT A WINDOW. What actually decides how far back the
+        /// threshold looks is HistorySeconds; this only has to be large enough
+        /// to hold that many seconds' worth however fast readings arrive.
+        ///
+        /// WHY THIS USED TO BE THE WINDOW ITSELF, AND WHY THAT WAS WRONG
+        ///
+        /// It was a plain count of 48, documented as "about half a second at
+        /// roughly a hundred readings a second". The rate was never measured,
+        /// and it is wrong by a factor of five.
+        ///
+        /// Recording the analyser against real music showed buffers arriving
+        /// every 50.9 ms - 19.6 readings a second, not ~100. Windows hands over
+        /// what it likes, and on this machine it likes 50 ms. So the window that
+        /// was meant to be half a second was really 2.45 seconds, and the
+        /// threshold was five times more sluggish than anybody intended. That is
+        /// its own contribution to a break taking too long to recover from.
+        ///
+        /// A count cannot express the intent, because the intent is about TIME -
+        /// long enough to cover a beat or two, short enough to follow the music.
+        /// Measuring it in seconds means it means the same thing on a machine
+        /// handing over 10 ms buffers as on one handing over 50 ms.
+        ///
+        /// TempoEstimator learned this same lesson earlier and its comment says
+        /// so: a window of "the last seventeen beats" narrowed to almost nothing
+        /// exactly when a busy passage needed it widest.
+        ///
+        /// 256 covers half a second at over 500 readings a second, which is far
+        /// faster than any sound card will deliver.
         /// </summary>
-        private const int HistoryLength = 48;
+        private const int HistoryCapacity = 256;
 
         /// <summary>
         /// How many readings are needed before the threshold means anything.
         ///
-        /// The threshold now describes how much readings normally vary, and
-        /// variation cannot be measured from two numbers. Eight is about a
-        /// twelfth of a second, so nothing is lost at the start of a track.
+        /// The threshold describes how much readings normally vary, and
+        /// variation cannot be measured from two numbers.
+        ///
+        /// Six rather than the old eight because the window is now real time
+        /// rather than a count: at the ~20 readings a second actually observed,
+        /// HistorySeconds holds only a dozen or so, and demanding eight of them
+        /// would mean waiting most of a window before judging anything.
         /// </summary>
-        private const int MinimumHistoryToJudge = 8;
+        private const int MinimumHistoryToJudge = 6;
 
         /// <summary>Recent flux values, used to work out what is normal.</summary>
-        private readonly double[] _history = new double[HistoryLength];
+        private readonly double[] _history = new double[HistoryCapacity];
+
+        /// <summary>When each of those readings was taken.</summary>
+        private readonly double[] _historyTimes = new double[HistoryCapacity];
 
         /// <summary>
-        /// Working space for sorting the history when finding a middle value.
+        /// The readings inside the window, gathered fresh for each judgement.
+        /// </summary>
+        private readonly double[] _windowValues = new double[HistoryCapacity];
+
+        /// <summary>
+        /// Working space for sorting the window when finding a middle value.
         ///
         /// Kept as a field rather than made fresh each time because this runs on
-        /// the audio thread about a hundred times a second, and that thread must
-        /// not be given avoidable work - a new array per reading would be six
-        /// thousand short-lived objects a minute for the garbage collector to
-        /// deal with.
+        /// the audio thread, and that thread must not be given avoidable work -
+        /// a new array per reading would be thousands of short-lived objects a
+        /// minute for the garbage collector to deal with.
         /// </summary>
-        private readonly double[] _sortingSpace = new double[HistoryLength];
+        private readonly double[] _sortingSpace = new double[HistoryCapacity];
 
         /// <summary>Where the next reading goes in the ring of history.</summary>
         private int _historyPosition;
 
-        /// <summary>How many readings have been recorded, up to HistoryLength.</summary>
+        /// <summary>How many readings are held, up to HistoryCapacity.</summary>
         private int _historyCount;
+
+        /// <summary>How many of those fell inside the window last time it was gathered.</summary>
+        private int _windowCount;
 
         /// <summary>The band strengths from the previous reading.</summary>
         private double[] _previousBands = new double[FrequencyBands.Count];
@@ -168,6 +207,27 @@ namespace LightWall.Core.Audio
         public double MinimumSecondsBetweenBeats { get; set; } = 0.20;
 
         /// <summary>
+        /// How far back the moving threshold looks, in seconds.
+        ///
+        /// Long enough to cover a beat or two so that the threshold describes
+        /// the music rather than the last drum hit, short enough to follow a
+        /// change of section. At 120 BPM a beat is half a second, so this is
+        /// about two beats.
+        ///
+        /// Measured rather than guessed. Replaying five real recordings through
+        /// the detector at settings from 0.25 s to 3.0 s, this is the value that
+        /// found closest to one detection per beat across all of them - see the
+        /// sweep recorded in NEXT_STEPS. Shorter and the threshold starts
+        /// tracking individual hits, which suppresses the very beats it should
+        /// be finding; much longer and it stops noticing that a section changed.
+        ///
+        /// In SECONDS, deliberately. It used to be a count of readings, which
+        /// silently meant whatever the sound card's buffer size made it mean.
+        /// See HistoryCapacity.
+        /// </summary>
+        public double HistorySeconds { get; set; } = 0.9;
+
+        /// <summary>
         /// How much of the flux must come from a genuine signal before anything
         /// is reported at all.
         ///
@@ -212,34 +272,135 @@ namespace LightWall.Core.Audio
         private const double AutoWindowSeconds = 4.0;
 
         /// <summary>
-        /// The healthy band of detections per second.
+        /// The tempo currently believed, in BPM, or 0 when none is known.
         ///
-        /// The bottom is set by the slowest music worth following: 70 beats a
-        /// minute is 1.17 a second, so anything at or below 1.0 means obvious
-        /// hits are going missing rather than the music simply being slow.
+        /// Set from outside - AudioAnalyser passes TempoEstimator's answer in on
+        /// every reading. The detector does not work it out itself and must not
+        /// try to: this is a HINT used only to decide how many detections a
+        /// second to aim for, never anything that changes what counts as a beat.
         ///
-        /// The top has to sit clear of a ceiling that is easy to miss.
-        /// MinimumSecondsBetweenBeats caps the rate at five a second on its own,
-        /// so a first attempt using 5.0 here could never fire - a detector
-        /// triggering on absolutely everything sat exactly at the limit and was
-        /// read as healthy. Measured: a dense track started far too loose stayed
-        /// there and reported 77 BPM for a 120 BPM signal. 3.5 leaves room above
-        /// the three a second that 180 BPM music produces while still being
-        /// reachable.
+        /// A property rather than an argument to Update so that anything
+        /// replaying a recording - see AnalysisRecorder - can drive the detector
+        /// with band strengths alone and get exactly what happened at the time.
+        ///
+        /// Read HealthyRange before trusting this to be harmless when wrong. A
+        /// wrong estimate can only ever ask for MORE detections than the fixed
+        /// floor, never fewer.
         /// </summary>
-        private const double AutoFewestPerSecond = 1.0;
+        public double TempoHintBpm { get; set; }
+
+        /// <summary>
+        /// The fewest detections a second that counts as healthy, whatever the
+        /// tempo turns out to be.
+        ///
+        /// THIS FLOOR IS A SAFETY DEVICE, NOT A TARGET, AND IT IS WHY THE TEMPO
+        /// ESTIMATE CANNOT TRAP THE TUNER AT A WRONG ANSWER.
+        ///
+        /// The target below is raised in line with the estimated tempo, because
+        /// what "enough detections" means depends on how fast the music is - a
+        /// 140 BPM track needs 2.33 a second to have any chance of one per beat.
+        /// But taking the target FROM the estimate closes a loop, and the loop
+        /// has a stable point at the wrong answer:
+        ///
+        ///     too few detections  ->  tempo reads low
+        ///     tempo reads low     ->  target drops to match
+        ///     target drops        ->  the too-few rate now looks healthy
+        ///     tuner stops         ->  too few detections, forever
+        ///
+        /// That is not hypothetical. Replaying a real recording of a 140 BPM
+        /// track that had settled on 69, a target taken purely from the estimate
+        /// would have sat still through most of it and, at one point, TIGHTENED -
+        /// driving it further from the truth.
+        ///
+        /// The floor breaks the loop, because the estimate is only ever allowed
+        /// to raise the bar and never to lower it below this. At 69 BPM the
+        /// estimate asks for 1.15 a second, the floor insists on 2.0, and the
+        /// tuner correctly keeps loosening until the real beats appear.
+        ///
+        /// 2.0 rather than the old 1.0 because 1.0 corresponds to 60 BPM, below
+        /// anything this app will ever report. Measured against five real
+        /// recordings, every window that read the tempo correctly ran at 2.25 a
+        /// second or more, and every window that read it wrongly ran below 2.0 -
+        /// so the floor sits exactly on the line the data draws.
+        ///
+        /// The cost is over-detection on genuinely slow music, where one per
+        /// beat is only 1.17 a second. That is the right way to be wrong: extra
+        /// off-beat sounds are something TempoEstimator is built to cope with,
+        /// and missing beats is not.
+        /// </summary>
+        private const double AutoFewestPerSecond = 2.0;
+
+        /// <summary>
+        /// The most detections a second that counts as healthy, before the tempo
+        /// is taken into account.
+        /// </summary>
         private const double AutoMostPerSecond = 3.5;
 
         /// <summary>
-        /// How far sensitivity moves in one step, as a multiplier.
+        /// How many detections per beat the tuner aims for once a tempo is
+        /// known, at the bottom and the top of the healthy band.
         ///
-        /// Tightening is slightly brisker than loosening. Over-detection reads
-        /// as noise and wants dealing with promptly; under-detection reads as
-        /// restraint, so creeping down towards it is the safer direction to be
-        /// slow in.
+        /// One per beat is the point of the whole exercise. The upper figure
+        /// leaves room for the off-beat sounds real music is full of before the
+        /// tuner decides it is finding too much.
         /// </summary>
-        private const double AutoTightenStep = 1.15;
-        private const double AutoLoosenStep = 0.93;
+        private const double AutoFewestPerBeat = 1.0;
+        private const double AutoMostPerBeat = 1.75;
+
+        /// <summary>
+        /// How close to the highest achievable rate the upper bound may sit.
+        ///
+        /// MinimumSecondsBetweenBeats caps the detection rate on its own - at
+        /// 0.20 s nothing can exceed five a second. An upper bound at or above
+        /// that cap can never fire, so a detector triggering on absolutely
+        /// everything sits exactly at the limit and is read as healthy. That
+        /// happened: a dense track started far too loose stayed there and
+        /// reported 77 BPM for a 120 BPM signal.
+        ///
+        /// Derived from the gap rather than written as a number, so that moving
+        /// the Beat gap slider cannot reintroduce the fault.
+        /// </summary>
+        private const double AutoShareOfAchievableRate = 0.9;
+
+        /// <summary>
+        /// How hard a step responds to how far off the rate is.
+        ///
+        /// WHY THE STEP IS NO LONGER A FIXED SIZE
+        ///
+        /// It used to move by a flat 7% down or 15% up however wrong things
+        /// were, which meant the distance to travel decided the time taken and
+        /// nothing else. Replaying a real 140 BPM recording that started at the
+        /// default sensitivity, the tuner needed TWELVE consecutive loosening
+        /// steps to get from 5.0 to 2.1 - and at four seconds a window that is
+        /// forty-eight seconds of a track spent reading the wrong tempo. It was
+        /// heading the right way the whole time, just far too slowly to be any
+        /// use to somebody running a set.
+        ///
+        /// The step is now proportional to the shortfall: a long way out moves a
+        /// long way, close moves a little. The same recording converges in about
+        /// three windows instead of twelve.
+        ///
+        /// The square root is what keeps that from overshooting. Sensitivity and
+        /// the rate it produces are not proportional to each other - halving the
+        /// setting does not double the detections - so responding by the full
+        /// ratio would sail past the target and oscillate. Responding by its
+        /// root approaches steadily from one side.
+        /// </summary>
+        private const double AutoResponse = 0.5;
+
+        /// <summary>
+        /// The largest single step, as a multiplier, in each direction.
+        ///
+        /// Bounded so that one strange window - a sudden silence, a track
+        /// change caught mid-window - cannot throw the setting across its whole
+        /// range before the next window has a chance to correct it.
+        ///
+        /// Tightening is allowed to be brisker than loosening. Over-detection
+        /// reads as noise and wants dealing with promptly; under-detection reads
+        /// as restraint, so approaching it slowly is the safer way to be wrong.
+        /// </summary>
+        private const double AutoLargestTightenStep = 1.6;
+        private const double AutoLargestLoosenStep = 0.6;
 
         /// <summary>
         /// The range automatic adjustment will not leave.
@@ -325,6 +486,10 @@ namespace LightWall.Core.Audio
             double flux = ComputeFlux(bandStrengths);
 
             CurrentFlux = flux;
+
+            // Gathered before judging, so the threshold describes the window
+            // ending at this moment rather than one ending at the last reading.
+            GatherWindow(nowSeconds);
             CurrentThreshold = ComputeThreshold();
             TriggerRatio = ComputeTriggerRatio(flux, CurrentThreshold);
 
@@ -335,7 +500,7 @@ namespace LightWall.Core.Audio
                 _lastBeatSeconds = nowSeconds;
             }
 
-            RecordFlux(flux);
+            RecordFlux(flux, nowSeconds);
             _previousFlux = flux;
 
             if (isBeat)
@@ -373,20 +538,55 @@ namespace LightWall.Core.Audio
             // Only judge when there is something to judge. Without this, silence
             // reads as "finding nothing" and would walk the sensitivity all the
             // way down, leaving the next track triggering on everything it hears.
+            // WHETHER THERE IS ANYTHING TO JUDGE - AND WHY THIS ASKS ABOUT THE
+            // LOUDEST READING RATHER THAN THE TYPICAL ONE.
+            //
+            // The gate exists to stop silence walking the setting down: nothing
+            // playing means nothing detected, which looks exactly like "far too
+            // tight" and would leave the next track triggering on everything.
+            //
+            // It used to compare the MIDDLE reading against MinimumFlux, and
+            // that was wrong on real music. Measured across five recordings, the
+            // median flux of an ordinary pop track runs from 0.008 to 0.047 -
+            // one of them sits BELOW the 0.01 floor. So on that track the gate
+            // read "nothing is playing" for most of its length and automatic
+            // tuning never engaged at all, which is exactly the complaint that
+            // it does not adjust quickly enough. Its sensitivity sat frozen at
+            // its starting value for the whole recording.
+            //
+            // The loudest reading in the window is the right question. In
+            // silence it is near zero; in quiet music it is a drum hit, which is
+            // comfortably above the floor even when the median is not. That
+            // distinguishes the two cases the gate actually cares about.
             bool somethingIsPlaying =
-                _historyCount >= MinimumHistoryToJudge && MiddleOfHistory() > MinimumFlux;
+                _windowCount >= MinimumHistoryToJudge && LoudestInWindow() > MinimumFlux;
 
             if (somethingIsPlaying)
             {
                 double perSecond = _detectionsThisWindow / elapsed;
 
-                if (perSecond > AutoMostPerSecond)
+                (double fewest, double most) = HealthyRange();
+
+                if (perSecond > most)
                 {
-                    Sensitivity = Math.Min(Sensitivity * AutoTightenStep, AutoHighest);
+                    // Finding too much. How much too much decides the step.
+                    double excess = perSecond / most;
+                    double step = Math.Min(
+                        Math.Pow(excess, AutoResponse), AutoLargestTightenStep);
+
+                    Sensitivity = Math.Min(Sensitivity * step, AutoHighest);
                 }
-                else if (perSecond < AutoFewestPerSecond)
+                else if (perSecond < fewest)
                 {
-                    Sensitivity = Math.Max(Sensitivity * AutoLoosenStep, AutoLowest);
+                    // Finding too little. Guard the division: a window with no
+                    // detections at all would otherwise ask for an infinite step,
+                    // and that is exactly the window where the shortfall is
+                    // largest and the temptation to leap is strongest.
+                    double shortfall = Math.Max(perSecond, 0.05) / fewest;
+                    double step = Math.Max(
+                        Math.Pow(shortfall, AutoResponse), AutoLargestLoosenStep);
+
+                    Sensitivity = Math.Max(Sensitivity * step, AutoLowest);
                 }
             }
 
@@ -395,17 +595,68 @@ namespace LightWall.Core.Audio
         }
 
         /// <summary>
+        /// How many detections a second currently count as healthy.
+        ///
+        /// HOW THE TEMPO IS USED, AND HOW IT IS PREVENTED FROM DOING HARM
+        ///
+        /// What counts as enough detections depends on how fast the music is: a
+        /// 140 BPM track needs 2.33 a second before one per beat is even
+        /// arithmetically possible, while the old fixed floor of 1.0 a second
+        /// corresponds to 60 BPM and declared half that healthy.
+        ///
+        /// So the tempo estimate raises the bar. Crucially it can ONLY raise it -
+        /// the answer is never allowed below AutoFewestPerSecond, which is what
+        /// stops a wrong low estimate justifying the under-detection that
+        /// produced it. See the note on that constant for the loop this avoids.
+        ///
+        /// The upper bound is held clear of the rate MinimumSecondsBetweenBeats
+        /// makes achievable, because a bound that cannot be reached is a bound
+        /// that never fires.
+        /// </summary>
+        private (double Fewest, double Most) HealthyRange()
+        {
+            double fewest = AutoFewestPerSecond;
+            double most = AutoMostPerSecond;
+
+            if (TempoHintBpm > 0.0)
+            {
+                double beatsPerSecond = TempoHintBpm / 60.0;
+
+                // Math.Max, not assignment. The estimate is a reason to expect
+                // MORE beats, never a licence to accept fewer.
+                fewest = Math.Max(fewest, beatsPerSecond * AutoFewestPerBeat);
+                most = Math.Max(most, beatsPerSecond * AutoMostPerBeat);
+            }
+
+            // Never ask for more than the minimum gap physically allows.
+            if (MinimumSecondsBetweenBeats > 0.0)
+            {
+                double achievable = 1.0 / MinimumSecondsBetweenBeats;
+                most = Math.Min(most, achievable * AutoShareOfAchievableRate);
+            }
+
+            // A floor that has been pushed above the ceiling would mean every
+            // window reads as both too few and too many. Keep them apart.
+            fewest = Math.Min(fewest, most * 0.9);
+
+            return (fewest, most);
+        }
+
+        /// <summary>
         /// Forgets everything and starts listening afresh.
         /// </summary>
         public void Reset()
         {
             Array.Clear(_history);
+            Array.Clear(_historyTimes);
             Array.Clear(_previousBands);
 
             _historyPosition = 0;
             _historyCount = 0;
+            _windowCount = 0;
             _previousFlux = 0.0;
             _lastBeatSeconds = double.NegativeInfinity;
+            TempoHintBpm = 0.0;
 
             CurrentFlux = 0.0;
             CurrentThreshold = 0.0;
@@ -526,26 +777,77 @@ namespace LightWall.Core.Audio
             // Below a few readings there is no meaningful spread to measure, and
             // a threshold guessed from two numbers would let anything through.
             // The largest number there is means "not ready to judge yet".
-            if (_historyCount < MinimumHistoryToJudge)
+            if (_windowCount < MinimumHistoryToJudge)
             {
                 return double.MaxValue;
             }
 
-            double typical = MiddleOfHistory();
+            double typical = MiddleOfWindow();
             double spread = MiddleDistanceFrom(typical);
 
             return typical + (Sensitivity * spread);
         }
 
         /// <summary>
-        /// The middle flux reading of recent history.
+        /// Collects the readings that fall inside the window, newest first.
+        ///
+        /// Walks backwards through the ring until a reading is older than
+        /// HistorySeconds, so the number gathered follows however fast readings
+        /// happen to be arriving. That is the whole point of the window being
+        /// expressed in time - see HistoryCapacity.
         /// </summary>
-        private double MiddleOfHistory()
+        private void GatherWindow(double nowSeconds)
         {
-            Array.Copy(_history, _sortingSpace, _historyCount);
-            Array.Sort(_sortingSpace, 0, _historyCount);
+            _windowCount = 0;
 
-            return _sortingSpace[_historyCount / 2];
+            for (int back = 1; back <= _historyCount; back++)
+            {
+                // Step backwards from the most recently written slot, wrapping
+                // round the ring. Adding the capacity before taking the
+                // remainder keeps the result positive.
+                int slot = ((_historyPosition - back) % HistoryCapacity + HistoryCapacity)
+                    % HistoryCapacity;
+
+                if (nowSeconds - _historyTimes[slot] > HistorySeconds)
+                {
+                    break;
+                }
+
+                _windowValues[_windowCount] = _history[slot];
+                _windowCount++;
+            }
+        }
+
+        /// <summary>
+        /// The largest flux reading in the window.
+        ///
+        /// Used only to tell silence from quiet music. See the note where it is
+        /// called for why the middle reading cannot answer that question.
+        /// </summary>
+        private double LoudestInWindow()
+        {
+            double loudest = 0.0;
+
+            for (int i = 0; i < _windowCount; i++)
+            {
+                if (_windowValues[i] > loudest)
+                {
+                    loudest = _windowValues[i];
+                }
+            }
+
+            return loudest;
+        }
+
+        /// <summary>
+        /// The middle flux reading of the window.
+        /// </summary>
+        private double MiddleOfWindow()
+        {
+            Array.Copy(_windowValues, _sortingSpace, _windowCount);
+            Array.Sort(_sortingSpace, 0, _windowCount);
+
+            return _sortingSpace[_windowCount / 2];
         }
 
         /// <summary>
@@ -558,14 +860,14 @@ namespace LightWall.Core.Audio
         /// </summary>
         private double MiddleDistanceFrom(double typical)
         {
-            for (int i = 0; i < _historyCount; i++)
+            for (int i = 0; i < _windowCount; i++)
             {
-                _sortingSpace[i] = Math.Abs(_history[i] - typical);
+                _sortingSpace[i] = Math.Abs(_windowValues[i] - typical);
             }
 
-            Array.Sort(_sortingSpace, 0, _historyCount);
+            Array.Sort(_sortingSpace, 0, _windowCount);
 
-            return _sortingSpace[_historyCount / 2];
+            return _sortingSpace[_windowCount / 2];
         }
 
         /// <summary>
@@ -608,12 +910,13 @@ namespace LightWall.Core.Audio
         /// <summary>
         /// Stores a flux reading in the rolling history.
         /// </summary>
-        private void RecordFlux(double flux)
+        private void RecordFlux(double flux, double nowSeconds)
         {
             _history[_historyPosition] = flux;
-            _historyPosition = (_historyPosition + 1) % HistoryLength;
+            _historyTimes[_historyPosition] = nowSeconds;
+            _historyPosition = (_historyPosition + 1) % HistoryCapacity;
 
-            if (_historyCount < HistoryLength)
+            if (_historyCount < HistoryCapacity)
             {
                 _historyCount++;
             }

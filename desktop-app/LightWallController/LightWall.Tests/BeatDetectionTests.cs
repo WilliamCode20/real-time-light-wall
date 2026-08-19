@@ -1002,6 +1002,209 @@ namespace LightWall.Tests
         /// loose - a second run after a reset stayed pinned at 1.5 where the
         /// first had correctly tightened to about 2.6.
         /// </summary>
+        /// <summary>
+        /// Drives an onset detector directly with a steady pulse, at the reading
+        /// rate real capture actually delivers.
+        ///
+        /// Twenty readings a second, not the hundred the code used to assume -
+        /// see OnsetDetector.HistoryCapacity for how that assumption came to be
+        /// measured and found wrong by a factor of five.
+        /// </summary>
+        private static double DriveDetector(
+            OnsetDetector detector,
+            double beatIntervalSeconds,
+            double seconds,
+            double tempoHintBpm)
+        {
+            const double readingInterval = 0.051;
+
+            double now = 0.0;
+
+            while (now < seconds)
+            {
+                detector.TempoHintBpm = tempoHintBpm;
+
+                double intoBeat = now % beatIntervalSeconds;
+                bool onHit = intoBeat < readingInterval;
+
+                detector.Update(MakeBands(onHit ? 0.5 : 0.02), now);
+                now += readingInterval;
+            }
+
+            return detector.Sensitivity;
+        }
+
+        /// <summary>
+        /// THE TRAP A TEMPO-AWARE TARGET COULD OTHERWISE FALL INTO.
+        ///
+        /// The tuner aims at roughly one detection per beat, and it takes "per
+        /// beat" from the tempo estimate. That closes a loop, and the loop has a
+        /// stable point at the wrong answer: too few detections makes the tempo
+        /// read low, a low tempo asks for fewer detections, and the rate that
+        /// caused the problem now looks healthy.
+        ///
+        /// Measured on a real recording before this was guarded: a 140 BPM track
+        /// that had settled on 69 would have sat still through most of the run
+        /// and at one point TIGHTENED, driving itself further from the truth.
+        ///
+        /// The guard is that the hint may only ever RAISE the bar. This checks
+        /// the property directly - a low hint must never leave the tuner more
+        /// relaxed than no hint at all.
+        /// </summary>
+        [Fact]
+        public void AWrongLowTempoHintCannotMakeTheTunerComplacent()
+        {
+            // A pulse every 0.8 s is 75 detections a minute - far too few for
+            // music, so the tuner should be loosening whatever it is told.
+            var withoutHint = new OnsetDetector { AutoSensitivity = true, Sensitivity = 6.0 };
+            var withLowHint = new OnsetDetector { AutoSensitivity = true, Sensitivity = 6.0 };
+
+            double noHint = DriveDetector(withoutHint, 0.8, 40.0, tempoHintBpm: 0.0);
+
+            // 75 BPM asks for only 1.25 detections a second, which this rate
+            // would satisfy. The fixed floor has to override it.
+            double lowHint = DriveDetector(withLowHint, 0.8, 40.0, tempoHintBpm: 75.0);
+
+            Assert.True(
+                noHint < 6.0,
+                $"The tuner should have loosened without any hint, but sat at {noHint:F2}.");
+
+            Assert.True(
+                lowHint <= noHint + 1e-9,
+                $"A low tempo hint left the tuner at {lowHint:F2} where no hint reached " +
+                $"{noHint:F2}. The hint has made it MORE relaxed, which is the feedback " +
+                "trap the fixed floor exists to prevent.");
+        }
+
+        /// <summary>
+        /// The other half of the same property: a high tempo genuinely does need
+        /// more detections a second, and the hint is what supplies that.
+        /// </summary>
+        [Fact]
+        public void AFastTempoHintAsksForMoreDetectionsThanTheFixedFloor()
+        {
+            // Fast enough that one per beat is well above the fixed floor.
+            var withoutHint = new OnsetDetector { AutoSensitivity = true, Sensitivity = 6.0 };
+            var withFastHint = new OnsetDetector { AutoSensitivity = true, Sensitivity = 6.0 };
+
+            double noHint = DriveDetector(withoutHint, 0.35, 40.0, tempoHintBpm: 0.0);
+            double fastHint = DriveDetector(withFastHint, 0.35, 40.0, tempoHintBpm: 171.0);
+
+            Assert.True(
+                fastHint <= noHint + 1e-9,
+                $"At 171 BPM the tuner should demand at least as much as the fixed floor, " +
+                $"but ended at {fastHint:F2} against {noHint:F2} with no hint.");
+        }
+
+        /// <summary>
+        /// The threshold window is a span of TIME, not a number of readings.
+        ///
+        /// It used to be a count of 48, documented as half a second "at roughly
+        /// a hundred readings a second". Recording real capture showed 19.6 a
+        /// second, so the window was really 2.45 seconds - five times its
+        /// intended length, and sluggish to match.
+        ///
+        /// A count cannot express the intent, because the intent is about time.
+        /// This checks the fix the decisive way: the same music delivered at two
+        /// very different buffer sizes must behave the same, where under a count
+        /// the slower delivery would have looked five times further back.
+        /// </summary>
+        [Fact]
+        public void TheThresholdWindowMeansTheSameAtAnyReadingRate()
+        {
+            static int CountBeatsAtRate(double readingInterval)
+            {
+                var detector = new OnsetDetector();
+                int beats = 0;
+                double now = 0.0;
+
+                while (now < 20.0)
+                {
+                    double intoBeat = now % 0.5;
+                    bool onHit = intoBeat < readingInterval;
+
+                    if (detector.Update(MakeBands(onHit ? 0.5 : 0.02), now))
+                    {
+                        beats++;
+                    }
+
+                    now += readingInterval;
+                }
+
+                return beats;
+            }
+
+            // 20 s of a 120 BPM pulse is 40 beats, whatever the buffer size.
+            int slowDelivery = CountBeatsAtRate(0.051);
+            int fastDelivery = CountBeatsAtRate(0.010);
+
+            Assert.InRange(slowDelivery, 35, 45);
+            Assert.InRange(fastDelivery, 35, 45);
+        }
+
+        /// <summary>
+        /// Quiet material must still be tuned rather than read as silence.
+        ///
+        /// The gate that stops silence walking the setting down used to compare
+        /// the MIDDLE flux reading against MinimumFlux. Measured across five real
+        /// recordings the median flux of an ordinary track runs from 0.008 to
+        /// 0.047 - one of them below the 0.01 floor - so on that track the gate
+        /// said "nothing is playing" for most of its length and automatic tuning
+        /// never engaged at all. Its sensitivity sat frozen at its starting
+        /// value for the whole recording.
+        ///
+        /// Asking about the loudest reading instead separates the two cases the
+        /// gate actually cares about.
+        /// </summary>
+        [Fact]
+        public void QuietMusicIsStillTunedRatherThanMistakenForSilence()
+        {
+            var detector = new OnsetDetector { AutoSensitivity = true, Sensitivity = 8.0 };
+
+            // Hits well above the noise floor, but sparse enough that the
+            // typical reading between them is very small indeed.
+            double settled = DriveDetector(detector, 0.9, 40.0, tempoHintBpm: 0.0);
+
+            Assert.True(
+                settled < 8.0,
+                $"Automatic tuning never engaged on quiet material - it stayed at " +
+                $"{settled:F2}. The gate has most likely mistaken a low median flux " +
+                "for silence.");
+        }
+
+        /// <summary>
+        /// A big shortfall has to move further than a small one.
+        ///
+        /// The step used to be a flat 7% however wrong things were, so the time
+        /// taken was decided by the distance to travel and nothing else.
+        /// Replaying a real 140 BPM recording that started at the default, the
+        /// tuner needed twelve consecutive steps - forty-eight seconds of a
+        /// track spent reading the wrong tempo while heading the right way.
+        /// </summary>
+        [Fact]
+        public void TheTunerMovesFurtherWhenItIsFurtherOut()
+        {
+            // Both start at the same place and both fall short of the floor.
+            // One falls a long way short, the other only a little.
+            var farOut = new OnsetDetector { AutoSensitivity = true, Sensitivity = 6.0 };
+            var nearlyThere = new OnsetDetector { AutoSensitivity = true, Sensitivity = 6.0 };
+
+            // Both intervals are shorter than the threshold window, so every
+            // judgement has a hit to look at and the "is anything playing" gate
+            // cannot decide the outcome. A sparser pulse than that is correctly
+            // refused as unjudgeable, which is right but makes for a test that
+            // measures the gate rather than the step.
+            //
+            // 4.5 s is one judging window, so exactly one adjustment happens.
+            double afterFarOut = DriveDetector(farOut, 0.85, 4.5, tempoHintBpm: 0.0);
+            double afterNearlyThere = DriveDetector(nearlyThere, 0.6, 4.5, tempoHintBpm: 0.0);
+
+            Assert.True(
+                afterFarOut < afterNearlyThere,
+                $"Being far out ended at {afterFarOut:F2} and being nearly there at " +
+                $"{afterNearlyThere:F2}. The step is not responding to how wrong it is.");
+        }
+
         [Fact]
         public void AutomaticSensitivityStillWorksAfterAReset()
         {
